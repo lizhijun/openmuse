@@ -27,8 +27,6 @@ import {
   Linking,
   Platform,
   Pressable,
-  Text,
-  TextInput,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -40,6 +38,7 @@ import type {
 } from "../../../packages/domain/src";
 import { API_URL } from "./api";
 import { localDateTime, zonedInstant } from "./date-time";
+import { getLanguage, Text, TextInput } from "./i18n";
 import {
   Button,
   Card,
@@ -679,7 +678,10 @@ export function CalendarScreen() {
       <View style={[s.between, { gap: 12, flexWrap: "wrap" }]}>
         <View style={[s.row, { gap: 8 }]}>
           <Text style={s.title}>
-            {anchor.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+            {anchor.toLocaleDateString(getLanguage() === "zh" ? "zh-CN" : "en-US", {
+              month: "long",
+              year: "numeric",
+            })}
           </Text>
           <IconButton
             icon={ChevronLeft}
@@ -737,7 +739,11 @@ export function CalendarScreen() {
                   backgroundColor: key === date ? colors.sky : "transparent",
                 }}
               >
-                <Text style={s.small}>{day.toLocaleDateString("en-US", { weekday: "short" })}</Text>
+                <Text style={s.small}>
+                  {day.toLocaleDateString(getLanguage() === "zh" ? "zh-CN" : "en-US", {
+                    weekday: "short",
+                  })}
+                </Text>
                 <Text
                   style={[
                     s.title,

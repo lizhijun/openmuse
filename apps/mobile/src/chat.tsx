@@ -2,11 +2,10 @@ import { ArrowDown, ArrowUp, FileText, RotateCcw, Square, X } from "lucide-react
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   KeyboardAvoidingView,
+  Text as NativeText,
   Platform,
   Pressable,
   ScrollView,
-  Text,
-  TextInput,
   View,
 } from "react-native";
 import { z } from "zod";
@@ -23,6 +22,7 @@ import {
 } from "./cloudflare-chat";
 import { ConversationQueue, type QueuedMessage } from "./conversation-queue";
 import { runConversationTurn } from "./conversation-run";
+import { Text, TextInput, useLanguage } from "./i18n";
 import { MailToolCard } from "./mail-tool-card";
 import { TaskThreadCard } from "./thread-artifacts";
 import { type Selection, useMuseThread } from "./threads";
@@ -169,6 +169,7 @@ export function ChatScreen({
   thread?: Selection;
   active?: boolean;
 }) {
+  const { language } = useLanguage();
   const { workspace: w, refresh, navigate } = useWorkspace();
   const { refresh: refreshAgent } = useAgentWorkspace();
   const { mainId, claimPrompt } = useMuseThread();
@@ -368,11 +369,21 @@ export function ChatScreen({
               {[
                 {
                   text: "Find cool things on Hacker News",
-                  action: () => enqueue("Check out Hacker News for cool stuff"),
+                  action: () =>
+                    enqueue(
+                      language === "zh"
+                        ? "看看 Hacker News 上有什么值得关注的内容"
+                        : "Check out Hacker News for cool stuff",
+                    ),
                 },
                 {
-                  text: "Summarize copilotkit.ai",
-                  action: () => enqueue("Summarize copilotkit.ai"),
+                  text: "Find an email with a PDF",
+                  action: () =>
+                    enqueue(
+                      language === "zh"
+                        ? "请在我的邮件中查找带 PDF 附件的邮件，并告诉我主题。"
+                        : "Find an email with a PDF attachment and tell me its subject.",
+                    ),
                 },
                 { text: "Keep an eye on a website", action: () => navigate("goals") },
               ].map((item) => (
@@ -408,9 +419,9 @@ export function ChatScreen({
                       backgroundColor: user ? colors.blue : "#EEEEF0",
                     }}
                   >
-                    <Text selectable style={[s.text, { fontSize: 16, lineHeight: 24 }]}>
+                    <NativeText selectable style={[s.text, { fontSize: 16, lineHeight: 24 }]}>
                       {text}
-                    </Text>
+                    </NativeText>
                   </View>
                 )}
                 <BrowserRunContext
@@ -615,7 +626,7 @@ export function ChatScreen({
           <View style={[s.row, { gap: 7, alignItems: "flex-end" }]}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Attach a document"
+              accessibilityLabel={language === "zh" ? "附加文档" : "Attach a document"}
               accessibilityState={{ expanded: picking }}
               onPress={() => setPicking(!picking)}
               style={({ pressed }) => ({
@@ -670,6 +681,8 @@ export function ChatScreen({
                   ? (event) => {
                       if (
                         event.nativeEvent.key === "Enter" &&
+                        !("isComposing" in event.nativeEvent && event.nativeEvent.isComposing) &&
+                        !("keyCode" in event.nativeEvent && event.nativeEvent.keyCode === 229) &&
                         !("shiftKey" in event.nativeEvent && event.nativeEvent.shiftKey)
                       ) {
                         event.preventDefault();
@@ -681,7 +694,15 @@ export function ChatScreen({
             />
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={replying ? "Stop reply" : "Send message"}
+              accessibilityLabel={
+                language === "zh"
+                  ? replying
+                    ? "停止回复"
+                    : "发送消息"
+                  : replying
+                    ? "Stop reply"
+                    : "Send message"
+              }
               disabled={!replying && (!draft.trim() || !loaded || !isReady)}
               onPress={replying ? () => void stop() : send}
               style={({ pressed }) => ({

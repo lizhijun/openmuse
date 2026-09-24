@@ -1,11 +1,13 @@
 import { ArrowRight, Bell, X } from "lucide-react-native";
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { useAgentWorkspace } from "./agent-workspace";
+import { Text, useLanguage } from "./i18n";
 import { Button, Card, colors, ErrorNotice, resultSummary, s } from "./ui";
 import { useWorkspace } from "./workspace";
 
 export function BackgroundUpdates() {
+  const { language } = useLanguage();
   const { data, mutate } = useAgentWorkspace();
   const { open } = useWorkspace();
   const [error, setError] = useState("");
@@ -34,7 +36,7 @@ export function BackgroundUpdates() {
         </View>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Dismiss background update"
+          accessibilityLabel={language === "zh" ? "忽略这条动态" : "Dismiss background update"}
           disabled={busy}
           onPress={() => void dismiss()}
           hitSlop={10}
@@ -55,7 +57,9 @@ export function BackgroundUpdates() {
         </Button>
         {updates.length > 1 && (
           <Button small onPress={() => open({ type: "notifications" })}>
-            {updates.length - 1} more updates
+            {language === "zh"
+              ? `还有 ${updates.length - 1} 条动态`
+              : `${updates.length - 1} more updates`}
           </Button>
         )}
       </View>

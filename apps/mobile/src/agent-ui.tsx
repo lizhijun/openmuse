@@ -20,7 +20,7 @@ import {
   X,
 } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Image, Linking, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Image, Linking, Pressable, View } from "react-native";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import type { Artifact, BrowserSession } from "../../../packages/domain/src";
 import type {
@@ -34,6 +34,7 @@ import type {
   RunEvent,
 } from "../../../packages/domain/src/agent";
 import { useAgentWorkspace } from "./agent-workspace";
+import { getLanguage, Text, translate } from "./i18n";
 import { ActivityScreen, ConnectionsScreen } from "./screens";
 import {
   Button,
@@ -54,11 +55,14 @@ import {
 import { useWorkspace } from "./workspace";
 
 export function statusLabel(value: string) {
-  return value.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+  return translate(
+    value.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()),
+    getLanguage(),
+  );
 }
 function stamp(value?: string) {
   return value
-    ? new Date(value).toLocaleString(undefined, {
+    ? new Date(value).toLocaleString(getLanguage() === "zh" ? "zh-CN" : "en-US", {
         month: "short",
         day: "numeric",
         hour: "numeric",
@@ -133,7 +137,11 @@ export function TaskCard({
             <Text style={s.heading}>{task.title}</Text>
             <Text style={s.small}>
               {statusLabel(task.status)}
-              {task.plan.length ? ` · ${done}/${task.plan.length} steps` : ""}
+              {task.plan.length
+                ? getLanguage() === "zh"
+                  ? ` · ${done}/${task.plan.length} 步`
+                  : ` · ${done}/${task.plan.length} steps`
+                : ""}
             </Text>
           </View>
           <ChevronRight size={17} color={colors.muted} />

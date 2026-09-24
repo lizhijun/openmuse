@@ -23,6 +23,8 @@ pnpm dev:web
 
 Open [http://localhost:8081](http://localhost:8081). The API health check is [http://localhost:8787/api/health](http://localhost:8787/api/health), and the Cloudflare Worker health check is [http://localhost:8792/health](http://localhost:8792/health). Wrangler runs Durable Objects locally and saves chat state under `apps/chat-worker/.wrangler/state`; the API saves its data under `.openmuse/`.
 
+The interface opens in Simplified Chinese. Use the conversation menu to switch between **中文** and **English**; the web app remembers this choice. Chat and delegated tasks answer in the language of the request. Existing messages and imported content keep their original language.
+
 In Chat, try **“Complete the permission slip”**. This creates a durable document task using sample mail. Open Activity to provide fictional form details, inspect the generated PDF, and review the prepared reply. For other sample flows, use Goals → Track or Menu → Delegate task → Finance.
 
 ## AI models

@@ -19,7 +19,7 @@ import {
   X,
 } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Image, Linking, Platform, Text, View } from "react-native";
+import { ActivityIndicator, Image, Linking, Platform, View } from "react-native";
 import {
   type ActionProposal,
   type Artifact,
@@ -38,6 +38,7 @@ import { browserAddress, browserSite } from "./browser-address";
 import { ComputerSheet } from "./computer";
 import DateTimeEditor from "./DateTimeEditor";
 import { localDateTime, zonedInstant } from "./date-time";
+import { getLanguage, Text } from "./i18n";
 import PdfReader from "./PdfReader";
 import {
   Button,
@@ -685,7 +686,7 @@ function ReviewDetail({ initial }: { initial: ActionProposal }) {
         <>
           <Text style={[s.small, { marginVertical: 17 }]}>
             Review expires{" "}
-            {new Date(action.expiresAt).toLocaleString(undefined, {
+            {new Date(action.expiresAt).toLocaleString(getLanguage() === "zh" ? "zh-CN" : "en-US", {
               year: "numeric",
               month: "short",
               day: "numeric",

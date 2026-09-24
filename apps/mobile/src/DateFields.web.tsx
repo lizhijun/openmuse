@@ -1,4 +1,5 @@
-import { Text, View } from "react-native";
+import { View } from "react-native";
+import { Text } from "./i18n";
 import { colors, s } from "./ui";
 
 interface DateFieldsProps {

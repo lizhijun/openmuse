@@ -7,14 +7,13 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   type TextInputProps,
   useWindowDimensions,
   View,
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { getLanguage, Text, TextInput, translate, useLanguage } from "./i18n";
 export const colors = {
   canvas: "#FCFCFC",
   card: "#FFFFFF",
@@ -167,10 +166,11 @@ export function IconButton({
   label: string;
   onPress: () => void;
 }) {
+  const { language } = useLanguage();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={translate(label, language)}
       onPress={onPress}
       style={({ pressed }) => [
         {
@@ -438,16 +438,31 @@ export function dateLabel(value: string, options?: Intl.DateTimeFormatOptions) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value
-    : date.toLocaleDateString("en-US", options || { month: "short", day: "numeric" });
+    : date.toLocaleDateString(
+        getLanguage() === "zh" ? "zh-CN" : "en-US",
+        options || { month: "short", day: "numeric" },
+      );
 }
 export function timeLabel(value: string, timeZone?: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value
-    : date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone });
+    : date.toLocaleTimeString(getLanguage() === "zh" ? "zh-CN" : "en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone,
+      });
 }
 export function relativeDate(value: string) {
   const diff = Date.now() - new Date(value).getTime();
+  if (getLanguage() === "zh")
+    return diff < 60_000
+      ? "刚刚"
+      : diff < 3600_000
+        ? `${Math.floor(diff / 60_000)} 分钟前`
+        : diff < 86400_000
+          ? `${Math.floor(diff / 3600_000)} 小时前`
+          : dateLabel(value);
   return diff < 60_000
     ? "Just now"
     : diff < 3600_000

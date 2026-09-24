@@ -18,8 +18,9 @@ import {
   useRef,
   useState,
 } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, View } from "react-native";
 import { ChatApi, type ChatThread } from "./api";
+import { Text, useLanguage } from "./i18n";
 import { Button, colors, ErrorNotice, Field, LinkRow, Sheet, s } from "./ui";
 import { useWorkspace } from "./workspace";
 
@@ -133,6 +134,7 @@ export function useMuseThread() {
   return context;
 }
 export function ThreadsSheet({ onClose }: { onClose: () => void }) {
+  const { language, setLanguage } = useLanguage();
   const {
     enabled,
     selection,
@@ -371,6 +373,17 @@ export function ThreadsSheet({ onClose }: { onClose: () => void }) {
         <LinkRow icon={CalendarDays} title="Calendar" onPress={() => go("calendar")} />
         <LinkRow icon={FileText} title="Files" onPress={() => go("files")} />
         <LinkRow icon={Settings2} title="Apps & settings" onPress={() => go("apps")} />
+        <View style={[s.between, { paddingVertical: 8 }]}>
+          <Text style={s.text}>{language === "zh" ? "语言" : "Language"}</Text>
+          <View style={[s.row, { gap: 8 }]}>
+            <Button small primary={language === "zh"} onPress={() => setLanguage("zh")}>
+              中文
+            </Button>
+            <Button small primary={language === "en"} onPress={() => setLanguage("en")}>
+              English
+            </Button>
+          </View>
+        </View>
         <Button small icon={RefreshCw} onPress={() => void mutate(refresh)}>
           Refresh workspace
         </Button>

@@ -17,7 +17,6 @@ import {
   AppState,
   Pressable,
   ScrollView,
-  Text,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -36,6 +35,7 @@ import { ChatScreen, WorkspaceTools } from "./src/chat";
 import { ComputerEntry } from "./src/computer";
 import { ComputerDraftProvider } from "./src/computer-drafts";
 import { Details } from "./src/details";
+import { LanguageProvider, Text, useLanguage } from "./src/i18n";
 import { BrowserScreen, CalendarScreen, FilesScreen, MailScreen } from "./src/screens";
 import { ThreadsProvider, ThreadsSheet, useMuseThread } from "./src/threads";
 import { Button, Card, colors, ErrorNotice, Field, IconButton, Mascot, s } from "./src/ui";
@@ -66,6 +66,14 @@ const titles: Partial<Record<Section, { title: string; subtitle: string }>> = {
   files: { title: "Files", subtitle: "Documents, forms and filled copies." },
 };
 export default function App() {
+  return (
+    <LanguageProvider>
+      <AppContent />
+    </LanguageProvider>
+  );
+}
+function AppContent() {
+  const { language } = useLanguage();
   const [token, setToken] = useState("");
   const [accessKey, setAccessKey] = useState("");
   const [busy, setBusy] = useState(true);
@@ -89,7 +97,7 @@ export default function App() {
     <SafeAreaProvider>
       <StatusBar style="dark" />
       {token ? (
-        <WorkspaceApp token={token} />
+        <WorkspaceApp key={language} token={token} />
       ) : (
         <SafeAreaView
           style={{
@@ -235,6 +243,7 @@ function WorkspaceShell({
   prompt?: { id: number; text: string };
 }) {
   const { workspace, section, navigate, open } = useWorkspace();
+  const { language } = useLanguage();
   const { data } = useAgentWorkspace();
   const {
     selection,
@@ -258,9 +267,9 @@ function WorkspaceShell({
   const agentName = data?.identity.name || "OpenMuse";
   const status = activeTask
     ? activeTask.status === "waiting_approval"
-      ? `Ready to review · ${activeTask.title}`
+      ? `${language === "zh" ? "等待审核" : "Ready to review"} · ${activeTask.title}`
       : activeTask.status === "waiting_input"
-        ? `Needs your input · ${activeTask.title}`
+        ? `${language === "zh" ? "需要你补充信息" : "Needs your input"} · ${activeTask.title}`
         : activeTask.plan.find((step) => step.status === "running")?.title || activeTask.title
     : data?.tasks.some((task) => task.status === "queued")
       ? "Picking up your next task…"
@@ -298,14 +307,18 @@ function WorkspaceShell({
             <View style={{ position: "absolute", left: 0, top: 16 }}>
               <IconButton
                 icon={Menu}
-                label="Open conversations and menu"
+                label={language === "zh" ? "打开会话和菜单" : "Open conversations and menu"}
                 onPress={() => setThreadsOpen(true)}
               />
             </View>
-            <View style={{ alignItems: "center", gap: 1 }}>
+            <View pointerEvents="box-none" style={{ alignItems: "center", gap: 1 }}>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`Open ${agentName} activity and approvals`}
+                accessibilityLabel={
+                  language === "zh"
+                    ? `打开${agentName}的动态和待审核事项`
+                    : `Open ${agentName} activity and approvals`
+                }
                 onPress={() => navigate("activity")}
                 style={({ pressed }) => ({
                   alignItems: "center",
@@ -336,7 +349,11 @@ function WorkspaceShell({
             <View style={{ position: "absolute", right: 0, top: 16 }}>
               <IconButton
                 icon={Bell}
-                label={`Notifications, ${pending} unread or pending`}
+                label={
+                  language === "zh"
+                    ? `通知，${pending} 条未读或待处理`
+                    : `Notifications, ${pending} unread or pending`
+                }
                 onPress={() => open({ type: "notifications" })}
               />
               {pending > 0 && (
@@ -447,7 +464,19 @@ function WorkspaceShell({
                   <Pressable
                     key={item.id}
                     accessibilityRole="tab"
-                    accessibilityLabel={item.label}
+                    accessibilityLabel={
+                      language === "zh"
+                        ? (
+                            {
+                              chat: "聊天",
+                              activity: "动态",
+                              ideas: "灵感",
+                              goals: "目标",
+                              apps: "应用",
+                            } as Record<string, string>
+                          )[item.id]
+                        : item.label
+                    }
                     accessibilityState={{ selected: active }}
                     onPress={() => navigate(item.id)}
                     style={{

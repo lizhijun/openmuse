@@ -27,7 +27,9 @@ In Chat, try **“Complete the permission slip”**. This creates a durable docu
 
 ## AI models
 
-Sample chat is guided and does not call a model. For open-ended chat, put `CF_ACCOUNT_ID`, `CF_API_TOKEN`, and `CF_MODEL` in `apps/chat-worker/.dev.vars`, then restart `pnpm dev:chat-worker`. `CF_MODEL` accepts a [Cloudflare AI Gateway model ID](https://developers.cloudflare.com/ai-gateway/usage/rest-api/), for example `@cf/meta/llama-3.1-8b-instruct`. `CF_GATEWAY_ID` defaults to `default`. The Worker calls Cloudflare AI Gateway's Chat Completions REST API and can delegate tasks or use mail, browser, goals, tracking, and memories through the API. **This Cloudflare model path requires your own account and has not been exercised with live credentials in this repository.**
+Sample chat is guided and does not call a model. With an active Wrangler login for one Cloudflare account, run `pnpm cloudflare:local` to configure both the chat Worker and task worker locally. This writes the current Wrangler OAuth token only to the gitignored `.env` and `apps/chat-worker/.dev.vars`; restart `pnpm dev` and `pnpm dev:chat-worker` afterward. Wrangler's OAuth token expires, so rerun the command and restart both processes if authentication stops working. For a lasting deployment, use a scoped Cloudflare API token with Workers AI Read permission as a secret instead.
+
+The Worker calls the [Cloudflare AI Gateway Chat Completions REST API](https://developers.cloudflare.com/ai-gateway/usage/rest-api/) using `@cf/meta/llama-3.3-70b-instruct-fp8-fast` and the `default` gateway. It can delegate tasks or use mail, browser, goals, tracking, and memories through the API. You can choose another model by setting `CF_MODEL` in `apps/chat-worker/.dev.vars` and `MODEL` in `.env`. The chat and tool paths have been verified with live Gateway requests.
 
 To let the background task worker use a model as well, set `AGENT_BACKEND=model`, `MODEL`, `CLOUDFLARE_ACCOUNT_ID`, and `CLOUDFLARE_API_TOKEN` in the private `.env`. It uses the same Cloudflare AI Gateway API. Keep both sets of tokens server-side; Expo receives neither. Model calls may incur Cloudflare charges.
 

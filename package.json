@@ -13,6 +13,7 @@
     "dev:mobile": "pnpm --dir apps/mobile start",
     "dev:web": "pnpm --dir apps/mobile web",
     "dev:chat-worker": "wrangler dev --config apps/chat-worker/wrangler.toml --port 8792 --ip 127.0.0.1 --local",
+    "cloudflare:local": "node scripts/configure-cloudflare-local.mjs",
     "test": "tsx --test tests/*.test.ts apps/mobile/test/*.test.ts",
     "test:browser": "node --experimental-strip-types --test apps/worker/tests/lifecycle.test.ts",
     "typecheck": "tsc --noEmit && pnpm --dir apps/mobile typecheck && tsc -p apps/chat-worker/tsconfig.json",

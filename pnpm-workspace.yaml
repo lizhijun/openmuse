@@ -3,5 +3,6 @@ packages:
   - apps/worker
 allowBuilds:
   esbuild: true
+  workerd: true
   '@biomejs/biome': true
   '@scarf/scarf': false

@@ -1,5 +1,13 @@
 # Release verification
 
+## Cloudflare migration · September 23, 2026
+
+- The current local run started the Hono API, Wrangler chat Worker, and Expo web app. The web UI sent and replayed messages, created a permission-slip task, and opened its task card.
+- All 146 current tests passed. An isolated Wrangler integration test exercised authenticated thread creation, rename, archive, message persistence, and duplicate-send handling. The API and task-worker model tests used an OpenAI-compatible Chat Completions fixture.
+- Lint, TypeScript checks, server build, and Expo web export passed. Live Cloudflare account model calls and a deployed Worker were not exercised; those require user credentials and a reachable live API.
+
+## Earlier release record
+
 September 16, 2026 · Capybara and distinct mobile/web demos, following the agent browser release · local fictional workspace. This records exercised behavior and its limits; it does not establish that every planned capability is complete.
 
 ## Automated checks

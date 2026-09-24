@@ -37,7 +37,7 @@ Browser integration checks use public fixture websites and disposable profiles. 
 
 ## Change guidelines
 
-- Keep CopilotKit/AG-UI transport, the native UI, and server-owned task execution separate.
+- Keep Cloudflare chat, the native UI, and server-owned task execution separate.
 - Show the real tool result or failure. Do not replace a failed connector with sample success.
 - Treat website, mail, and PDF text as data. It cannot grant tool permissions or approve a write.
 - Keep sends and calendar mutations behind persisted, versioned action reviews. Preserve uncertain provider outcomes; do not retry a possibly completed write.

@@ -1,4 +1,3 @@
-import { useThreads } from "@copilotkit/react-native/headless";
 import {
   Archive,
   CalendarDays,
@@ -9,18 +8,21 @@ import {
   RefreshCw,
   Settings2,
 } from "lucide-react-native";
-import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { ChatApi, type ChatThread } from "./api";
 import { Button, colors, ErrorNotice, Field, LinkRow, Sheet, s } from "./ui";
 import { useWorkspace } from "./workspace";
 
-function newThreadId() {
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  bytes[6] = (bytes[6] & 15) | 64;
-  bytes[8] = (bytes[8] & 63) | 128;
-  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
 export type Selection = { id: string; existing: boolean };
 const ThreadContext = createContext<{
   enabled: boolean;
@@ -33,43 +35,60 @@ const ThreadContext = createContext<{
   select: (selection: Selection) => void;
   start: () => void;
   claimPrompt: (id: number) => boolean;
+  threads: ChatThread[];
+  threadsError: string;
+  refreshThreads: () => Promise<void>;
+  renameThread: (id: string, name: string) => Promise<void>;
+  setArchived: (id: string, archived: boolean) => Promise<void>;
+  isMutating: boolean;
 } | null>(null);
 export function ThreadsProvider({ children }: { children: ReactNode }) {
-  const { workspace, navigate, api } = useWorkspace();
+  const { navigate, api } = useWorkspace();
+  const chatApi = useMemo(() => new ChatApi(api.token), [api.token]);
   const handledPrompt = useRef(0);
-  const enabled = workspace.runtime.richThreads === true;
-  const [selection, setSelection] = useState<Selection>({ id: "local", existing: false });
-  const [visited, setVisited] = useState<Selection[]>([]);
-  const [mainId, setMainId] = useState("local");
-  const [loading, setLoading] = useState(enabled);
+  const enabled = true;
+  const [selection, setSelection] = useState<Selection>({ id: "main", existing: true });
+  const [visited, setVisited] = useState<Selection[]>([{ id: "main", existing: true }]);
+  const mainId = "main";
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [threadsError, setThreadsError] = useState("");
+  const [threads, setThreads] = useState<ChatThread[]>([]);
+  const [isMutating, setIsMutating] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const refreshThreads = useCallback(async () => {
+    try {
+      const result = await chatApi.request<{ threads: ChatThread[] }>("/threads");
+      setThreads(result.threads);
+      setThreadsError("");
+      setError("");
+      setLoading(false);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      setThreadsError(message);
+      setError(message);
+      setLoading(false);
+      throw cause;
+    }
+  }, [chatApi]);
   useEffect(() => {
-    if (!enabled) return;
-    let active = true;
     setLoading(true);
     setError("");
-    void api
-      .request<{ threadId: string; existing: boolean }>("/api/main-thread")
-      .then((main) => {
-        if (!active) return;
-        const next = { id: main.threadId, existing: main.existing };
-        setMainId(next.id);
-        setSelection(next);
-        setVisited([next]);
-        setLoading(false);
-      })
-      .catch((e) => {
-        if (active) setError(e instanceof Error ? e.message : String(e));
-      });
-    return () => {
-      active = false;
-    };
-  }, [api, enabled, attempt]);
+    void refreshThreads().catch(() => {});
+  }, [refreshThreads, attempt]);
   function select(next: Selection) {
     setSelection(next);
     setVisited((items) => (items.some((item) => item.id === next.id) ? items : [...items, next]));
     navigate("chat");
+  }
+  async function patchThread(id: string, body: { name?: string; archived?: boolean }) {
+    setIsMutating(true);
+    try {
+      await chatApi.request(`/threads/${id}`, body, "PATCH");
+      await refreshThreads();
+    } finally {
+      setIsMutating(false);
+    }
   }
   return (
     <ThreadContext.Provider
@@ -87,7 +106,21 @@ export function ThreadsProvider({ children }: { children: ReactNode }) {
         retry: () => setAttempt((n) => n + 1),
         selection,
         select,
-        start: () => select({ id: newThreadId(), existing: false }),
+        start: () => {
+          void chatApi
+            .request<ChatThread>("/threads", {})
+            .then(async (thread) => {
+              await refreshThreads();
+              select({ id: thread.id, existing: true });
+            })
+            .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
+        },
+        threads,
+        threadsError,
+        refreshThreads,
+        renameThread: (id, name) => patchThread(id, { name }),
+        setArchived: (id, archived) => patchThread(id, { archived }),
+        isMutating,
       }}
     >
       {children}
@@ -110,9 +143,28 @@ export function ThreadsSheet({ onClose }: { onClose: () => void }) {
     retry,
     select,
     start,
+    threads: savedThreads,
+    threadsError,
+    refreshThreads,
+    renameThread,
+    setArchived: updateArchive,
+    isMutating,
   } = useMuseThread();
   const { workspace, open, navigate, refresh } = useWorkspace();
-  const threads = useThreads({ agentId: "default", enabled, includeArchived: true, limit: 20 });
+  const threads = {
+    threads: savedThreads,
+    isLoading: loading,
+    error: threadsError ? new Error(threadsError) : undefined,
+    refetchThreads: () => void refreshThreads().catch(() => {}),
+    isMutating,
+    renameThread,
+    archiveThread: (id: string) => updateArchive(id, true),
+    unarchiveThread: (id: string) => updateArchive(id, false),
+    fetchMoreError: undefined as Error | undefined,
+    hasMoreThreads: false,
+    isFetchingMoreThreads: false,
+    fetchMoreThreads: () => {},
+  };
   const [editing, setEditing] = useState<string>();
   const [name, setName] = useState("");
   const [error, setError] = useState("");

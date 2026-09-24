@@ -101,8 +101,15 @@ export class BrowserService {
     await this.db.put(owner, "browsers", session);
     return this.decorate(owner, session);
   }
-  async create(owner: string, url: string) {
-    const id = randomUUID();
+  async create(owner: string, url: string, id: string = randomUUID()) {
+    const existing = await this.db.get<BrowserSession>(owner, "browsers", id);
+    if (existing) {
+      if (existing.url !== url)
+        throw new AppError("Browser request ID belongs to another URL", 409);
+      return existing.status === "active"
+        ? this.decorate(owner, existing)
+        : this.reopen(owner, id, url);
+    }
     // Record ownership before calling the worker, including when its response is lost.
     await this.db.put(owner, "browsers", {
       id,

@@ -1,12 +1,3 @@
-import {
-  type Message,
-  type ToolMessage,
-  useAgent,
-  useAgentContext,
-  useCopilotKit,
-  useRenderTool,
-  useRenderToolCall,
-} from "@copilotkit/react-native/headless";
 import { ArrowDown, ArrowUp, FileText, RotateCcw, Square, X } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
@@ -19,15 +10,21 @@ import {
   View,
 } from "react-native";
 import { z } from "zod";
-import { ArtifactCard } from "./agent-ui";
 import { useAgentWorkspace } from "./agent-workspace";
 import { BackgroundUpdates } from "./background-updates";
 import { BrowserRunContext, BrowserToolCard } from "./browser-tool-card";
-import { BrowserThreadCard } from "./computer";
+import {
+  type ToolMessage,
+  useAgent,
+  useAgentContext,
+  useCloudflareChat,
+  useRenderTool,
+  useRenderToolCall,
+} from "./cloudflare-chat";
 import { ConversationQueue, type QueuedMessage } from "./conversation-queue";
 import { runConversationTurn } from "./conversation-run";
 import { MailToolCard } from "./mail-tool-card";
-import { FileThreadCard, TaskThreadCard } from "./thread-artifacts";
+import { TaskThreadCard } from "./thread-artifacts";
 import { type Selection, useMuseThread } from "./threads";
 import { Button, Card, CheckRow, colors, ErrorNotice, s } from "./ui";
 import { useWorkspace } from "./workspace";
@@ -172,19 +169,18 @@ export function ChatScreen({
   thread?: Selection;
   active?: boolean;
 }) {
-  const { api, workspace: w, refresh, navigate } = useWorkspace();
-  const { data: agentWorkspace, refresh: refreshAgent } = useAgentWorkspace();
-  const { enabled: richThreads, mainId, claimPrompt } = useMuseThread();
-  const selection = thread || { id: "local", existing: false };
-  const threadId = richThreads ? selection.id : "local-main";
+  const { workspace: w, refresh, navigate } = useWorkspace();
+  const { refresh: refreshAgent } = useAgentWorkspace();
+  const { mainId, claimPrompt } = useMuseThread();
+  const selection = thread || { id: mainId, existing: true };
+  const threadId = selection.id;
   const agentId = `openmuse-${threadId}`;
   const { agent, isReady } = useAgent({ agentId, runtimeAgentId: "default", threadId });
-  const { copilotkit } = useCopilotKit();
+  const { chat } = useCloudflareChat();
   const renderToolCall = useRenderToolCall();
   const [draft, setDraft] = useState("");
   const [focused, setFocused] = useState(false);
   const [inputHeight, setInputHeight] = useState(44);
-  const [showResults, setShowResults] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -196,7 +192,6 @@ export function ChatScreen({
   const followLatest = useRef(true);
   const [awayFromLatest, setAwayFromLatest] = useState(false);
   const runLock = useRef(false);
-  const [saveError, setSaveError] = useState("");
   const [historyError, setHistoryError] = useState("");
   const [historyAttempt, setHistoryAttempt] = useState(0);
   useEffect(() => {
@@ -206,22 +201,16 @@ export function ChatScreen({
     setLoaded(false);
     const replay = agent.subscribe({
       onMessagesChanged: ({ messages }) => {
-        if (active && richThreads && messages.length) setLoaded(true);
+        if (active && messages.length) setLoaded(true);
       },
     });
     async function hydrate() {
       try {
-        if (richThreads) {
-          if (selection.existing)
-            await runConversationTurn(
-              agentId,
-              () => copilotkit.connectAgent({ agent }),
-              (onError) => copilotkit.subscribe({ onError }),
-            );
-        } else {
-          const { messages } = await api.request<{ messages: Message[] }>("/api/conversation");
-          if (active) agent.setMessages(messages);
-        }
+        await runConversationTurn(
+          agentId,
+          () => chat.connectAgent({ agent }),
+          (onError) => chat.subscribe({ onError }),
+        );
         if (active) setLoaded(true);
       } catch (e) {
         if (active) {
@@ -236,13 +225,9 @@ export function ChatScreen({
     return () => {
       active = false;
       replay.unsubscribe();
-      if (richThreads) void agent.detachActiveRun().catch(() => {});
+      void agent.detachActiveRun().catch(() => {});
     };
-  }, [agent, agentId, api, copilotkit, isReady, historyAttempt, richThreads, selection.existing]);
-  const saveHistory = useCallback(async () => {
-    if (!richThreads) await api.request("/api/conversation", { messages: agent.messages }, "PUT");
-    setSaveError("");
-  }, [agent, api, richThreads]);
+  }, [agent, agentId, chat, isReady, historyAttempt]);
   const run = useCallback(
     async (message?: QueuedMessage) => {
       if (runLock.current || agent.isRunning || !isReady || !loaded)
@@ -254,25 +239,16 @@ export function ChatScreen({
       try {
         await runConversationTurn(
           agentId,
-          () => copilotkit.runAgent({ agent }),
-          (onError) => copilotkit.subscribe({ onError }),
+          () => chat.runAgent({ agent }),
+          (onError) => chat.subscribe({ onError }),
         );
         await Promise.all([refresh(), refreshAgent()]);
       } finally {
-        try {
-          await saveHistory();
-        } catch (e) {
-          queue.pause();
-          setSaveError(
-            `Conversation could not be saved: ${e instanceof Error ? e.message : String(e)}`,
-          );
-        } finally {
-          runLock.current = false;
-          setBusy(false);
-        }
+        runLock.current = false;
+        setBusy(false);
       }
     },
-    [agent, agentId, copilotkit, isReady, loaded, refresh, refreshAgent, saveHistory, queue],
+    [agent, agentId, chat, isReady, loaded, refresh, refreshAgent],
   );
   const flush = useCallback(() => {
     if (!loaded || !isReady || runLock.current || agent.isRunning) return;
@@ -295,7 +271,7 @@ export function ChatScreen({
       enqueue(prompt.text);
   }, [active, prompt, isReady, loaded, enqueue, claimPrompt]);
   useEffect(() => {
-    const subscription = copilotkit.subscribe({
+    const subscription = chat.subscribe({
       onError: (event) => {
         if (event.context?.agentId && event.context.agentId !== agentId) return;
         const failure = event.error instanceof Error ? event.error : new Error(String(event.error));
@@ -303,11 +279,11 @@ export function ChatScreen({
       },
     });
     return () => subscription.unsubscribe();
-  }, [copilotkit, agentId, queue]);
+  }, [chat, agentId, queue]);
   async function stop() {
     queue.pause();
     try {
-      await copilotkit.stopAgent({ agent });
+      await chat.stopAgent({ agent });
     } catch (e) {
       setError(`Could not stop response: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -316,9 +292,7 @@ export function ChatScreen({
     const text = draft.trim();
     if (!text || !isReady || !loaded) return;
     // A new submission can continue after Stop; held follow-ups still need explicit resume.
-    if (!busy && !agent.isRunning && !saveError && !queue.getSnapshot().pending.length)
-      queue.resume();
-    setShowResults(false);
+    if (!busy && !agent.isRunning && !queue.getSnapshot().pending.length) queue.resume();
     const files = w.files.filter((f) => attachments.includes(f.id));
     enqueue(
       text +
@@ -460,51 +434,7 @@ export function ChatScreen({
             );
           })
         )}
-        {!richThreads && (
-          <>
-            {(w.files.some((file) => file.parentId) ||
-              w.browsers.some((browser) => browser.status === "active") ||
-              !!agentWorkspace?.artifacts.length) && (
-              <Button
-                small
-                style={{ alignSelf: "flex-start", marginTop: 6 }}
-                onPress={() => setShowResults(!showResults)}
-              >
-                {showResults ? "Hide recent results" : "Recent results"}
-              </Button>
-            )}
-            {showResults && (
-              <>
-                {w.files
-                  .filter((file) => file.parentId)
-                  .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-                  .slice(0, 1)
-                  .map((file) => (
-                    <FileThreadCard key={file.id} file={file} />
-                  ))}
-                {w.browsers
-                  .filter((browser) => browser.status === "active")
-                  .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-                  .slice(0, 1)
-                  .map((browser) => (
-                    <BrowserThreadCard key={browser.id} browser={browser} />
-                  ))}
-                {[...(agentWorkspace?.artifacts || [])]
-                  .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-                  .filter(
-                    (artifact, index, items) =>
-                      items.findIndex((item) => item.kind === artifact.kind) === index,
-                  )
-                  .slice(0, 2)
-                  .reverse()
-                  .map((artifact) => (
-                    <ArtifactCard key={artifact.id} artifact={artifact} />
-                  ))}
-              </>
-            )}
-          </>
-        )}
-        {(!richThreads || selection.id === mainId) && <BackgroundUpdates />}
+        {selection.id === mainId && <BackgroundUpdates />}
         {(busy || agent.isRunning) && (
           <View
             accessibilityLabel="Agent is working"
@@ -567,18 +497,6 @@ export function ChatScreen({
         </Button>
       )}
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <ErrorNotice error={saveError} />
-        {!!saveError && (
-          <Button
-            small
-            disabled={busy}
-            onPress={() => {
-              void saveHistory().catch((e) => setSaveError(String(e)));
-            }}
-          >
-            Retry saving conversation
-          </Button>
-        )}
         {!!outbox.pending.length && (
           <View style={{ padding: 12, gap: 6 }}>
             <Text style={s.small}>
@@ -603,7 +521,7 @@ export function ChatScreen({
             {outbox.paused && (
               <Button
                 small
-                disabled={busy || !!saveError}
+                disabled={busy}
                 onPress={() => {
                   queue.resume();
                   flush();

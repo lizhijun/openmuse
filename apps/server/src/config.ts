@@ -3,7 +3,6 @@ import { resolve } from "node:path";
 
 if (existsSync(".env")) process.loadEnvFile(".env");
 process.env.DO_NOT_TRACK ??= "1";
-process.env.COPILOTKIT_TELEMETRY_DISABLED ??= "true";
 
 export interface Config {
   mode: "sample" | "live";
@@ -15,10 +14,7 @@ export interface Config {
   accessKey?: string;
   encryptionKey?: string;
   model?: string;
-  agentBackend: "sample" | "model" | "agui";
-  agentUrl?: string;
-  agentToken?: string;
-  intelligenceApiKey?: string;
+  agentBackend: "sample" | "model";
   googleClientId?: string;
   googleClientSecret?: string;
   googleRedirectUri: string;
@@ -31,24 +27,19 @@ export interface Config {
   allowedOrigins: string[];
 }
 
-export const intelligenceKeyRequiredMessage =
-  "OpenMuse requires CPK_INTELLIGENCE_API_KEY. " +
-  "Run `npx copilotkit@latest login` and `npx copilotkit@latest project select`, " +
-  "then set the generated server-only key. " +
-  "See https://docs.copilotkit.ai/intelligence/connect-your-runtime";
-
 export function required(name: string, message: string, value = process.env[name]): string {
   if (!value?.trim()) throw new Error(message);
   return value.trim();
 }
 
-export function assertApiDeploymentConfig(
-  config: Config,
-): asserts config is Config & { intelligenceApiKey: string } {
-  required(
-    "CPK_INTELLIGENCE_API_KEY",
-    intelligenceKeyRequiredMessage,
-    config.intelligenceApiKey ?? "",
+export function agentConfigured(config: Config) {
+  return (
+    config.agentBackend === "sample" ||
+    Boolean(
+      config.model &&
+        ((process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_API_TOKEN) ||
+          (process.env.OPENAI_BASE_URL && process.env.OPENAI_API_KEY)),
+    )
   );
 }
 
@@ -57,8 +48,8 @@ export function readConfig(): Config {
   if (mode !== "sample" && mode !== "live")
     throw new Error("WORKSPACE_MODE must be sample or live");
   const backend = process.env.AGENT_BACKEND ?? (mode === "sample" ? "sample" : "model");
-  if (backend !== "sample" && backend !== "model" && backend !== "agui")
-    throw new Error("AGENT_BACKEND must be sample, model or agui");
+  if (backend !== "sample" && backend !== "model")
+    throw new Error("AGENT_BACKEND must be sample or model");
   if (mode === "live" && backend === "sample")
     throw new Error("Live workspaces cannot use the sample agent");
   const port = Number(process.env.PORT ?? 8787);
@@ -74,9 +65,6 @@ export function readConfig(): Config {
     encryptionKey: process.env.TOKEN_ENCRYPTION_KEY,
     model: process.env.MODEL,
     agentBackend: backend,
-    agentUrl: process.env.AGENT_URL,
-    agentToken: process.env.AGENT_TOKEN,
-    intelligenceApiKey: required("CPK_INTELLIGENCE_API_KEY", intelligenceKeyRequiredMessage),
     googleClientId: process.env.GOOGLE_CLIENT_ID,
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
     googleRedirectUri: `${publicUrl}/api/google/callback`,

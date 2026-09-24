@@ -1,18 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { MessageSchema } from "@ag-ui/core";
-import { CopilotKitIntelligence } from "@copilotkit/runtime/v2";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { z } from "zod";
 import { emailDraftSchema, proposalSchema } from "../../../packages/domain/src/index.ts";
 import { ActionService } from "./actions.ts";
-import { agentConfigured, makeRuntime } from "./agent.ts";
 import { createAuth } from "./auth.ts";
 import { BrowserService } from "./browser.ts";
 import { ComputerService, type DockerRunner } from "./computer.ts";
 import { computerRoutes } from "./computer-routes.ts";
-import { assertApiDeploymentConfig, type Config } from "./config.ts";
+import { agentConfigured, type Config } from "./config.ts";
 import type { Store } from "./db.ts";
 import { agentRoutes } from "./engine/routes.ts";
 import { AgentService } from "./engine/service.ts";
@@ -26,7 +23,6 @@ export async function createApp(
   config: Config,
   options: { docker?: DockerRunner } = {},
 ) {
-  assertApiDeploymentConfig(config);
   const auth = await createAuth(db, config),
     files = new Files(db, config, auth),
     google = new GoogleAuth(db, config),
@@ -41,8 +37,6 @@ export async function createApp(
   const browser = new BrowserService(db, config, auth, files);
   const computer = new ComputerService(db, config, options.docker);
   const agent = new AgentService(db, config, workspace, files, actions, browser, computer);
-  const intelligence = new CopilotKitIntelligence({ apiKey: config.intelligenceApiKey });
-  const runtime = makeRuntime(config, agent, auth, intelligence);
   const app = new Hono<{ Variables: { owner: string } }>();
   const origins = new Set([...config.allowedOrigins, new URL(config.publicUrl).origin]);
   app.use("*", async (c, next) => {
@@ -135,6 +129,7 @@ export async function createApp(
     c.set("owner", owner);
     await next();
   });
+  app.get("/api/chat/identity", (c) => c.json({ owner: c.get("owner"), mode: config.mode }));
   app.get("/api/workspace", async (c) => {
     const snapshot = await workspace.snapshot(c.get("owner"), c.req.query("q"));
     snapshot.browsers = snapshot.browsers.map((s) => browser.decorate(c.get("owner"), s));
@@ -193,39 +188,6 @@ export async function createApp(
       201,
     );
   });
-  app.get("/api/main-thread", async (c) => {
-    const owner = c.get("owner");
-    await db.insertIfAbsent(owner, "conversation-settings", {
-      id: "main",
-      threadId: randomUUID(),
-      existing: false,
-    });
-    const main = await db.get<{ threadId: string }>(owner, "conversation-settings", "main");
-    if (!main) throw new AppError("Main conversation could not be loaded", 503);
-    try {
-      await intelligence.getOrCreateThread({
-        threadId: main.threadId,
-        userId: owner,
-        agentId: "default",
-      });
-    } catch {
-      throw new AppError(
-        "Main conversation is unavailable. Check the Rich Threads connection and try again.",
-        502,
-      );
-    }
-    return c.json({ threadId: main.threadId, existing: true });
-  });
-  app.get("/api/conversation", async (c) =>
-    c.json((await db.get(c.get("owner"), "conversations", "default")) ?? { messages: [] }),
-  );
-  app.put("/api/conversation", async (c) => {
-    const body = await c.req.json();
-    const messages = z.array(z.unknown()).max(1000).parse(body.messages);
-    for (const message of messages) MessageSchema.parse(message);
-    await db.put(c.get("owner"), "conversations", { id: "default", messages });
-    return c.json({ ok: true });
-  });
   app.post("/api/files", async (c) => {
     const data = await c.req.parseBody();
     const file = data.file;
@@ -275,8 +237,10 @@ export async function createApp(
     return c.json({ ok: true });
   });
   app.post("/api/browsers", async (c) => {
-    const body = z.object({ url: z.url().max(4096) }).parse(await c.req.json());
-    return c.json(await browser.create(c.get("owner"), body.url), 201);
+    const body = z
+      .object({ url: z.url().max(4096), id: z.uuid().optional() })
+      .parse(await c.req.json());
+    return c.json(await browser.create(c.get("owner"), body.url, body.id), 201);
   });
   app.get("/api/browsers/:id", async (c) => {
     const owner = c.get("owner");
@@ -316,24 +280,6 @@ export async function createApp(
   app.post("/api/browsers/:id/console", async (c) => {
     await browser.input(c.get("owner"), c.req.param("id"), await c.req.json());
     return c.json({ ok: true });
-  });
-  app.all("/api/copilotkit/*", async (c) => {
-    if (!agentConfigured(config))
-      throw new AppError(
-        "Configure a model and provider API key, or a valid AG-UI endpoint, to start chat",
-        503,
-      );
-    const response = await runtime.fetch(c.req.raw);
-    // Runtime 1.70 emits SSE strings; a WHATWG Response body requires byte chunks.
-    const encoder = new TextEncoder();
-    const body = response.body?.pipeThrough(
-      new TransformStream({
-        transform(chunk, controller) {
-          controller.enqueue(typeof chunk === "string" ? encoder.encode(chunk) : chunk);
-        },
-      }),
-    );
-    return new Response(body, { status: response.status, headers: response.headers });
   });
   app.get("/", (c) =>
     c.json({ name: "OpenMuse", app: "http://localhost:8081", health: "/api/health" }),

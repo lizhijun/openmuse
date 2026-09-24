@@ -6,6 +6,8 @@ build/
 .env.local
 .env.*.local
 .openmuse/
+.wrangler/
+.dev.vars
 apps/mobile/ios/
 apps/mobile/android/
 .DS_Store

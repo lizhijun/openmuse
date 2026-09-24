@@ -8,7 +8,7 @@ Use the repository's **Security → Report a vulnerability** form for private re
 
 OpenMuse currently supports one owner per deployment. Live mode uses a shared access key; it is not multi-tenant account authentication. Sample mode binds to loopback and contains fictional data. Use HTTPS and restricted network access for a remote live deployment.
 
-The API holds provider credentials. Google tokens are encrypted at rest; short-lived signed URLs grant file and browser-console access. Protect `.env`, `.openmuse`, database backups, and browser profiles as private data. A signed URL is a credential until it expires.
+The API and Cloudflare chat Worker hold model credentials. Google tokens are encrypted at rest; short-lived signed URLs grant file and browser-console access. Protect `.env`, `.openmuse`, `apps/chat-worker/.wrangler/state`, Worker secrets, database backups, and browser profiles as private data. A signed URL is a credential until it expires.
 
 The browser worker must remain private and require its own random token. It runs persistent Chromium with application-enforced public-network checks. Playwright disables Chromium's internal sandbox by default; this is not a full desktop VM or a security boundary for hostile tenants. The browser Docker image reduces host access but does not establish kernel-enforced network isolation. See [worker boundaries](apps/worker/README.md).
 
@@ -28,4 +28,4 @@ Docker shares its host kernel and does not provide a full VM or a hostile-tenant
 
 A proposal is bound to the account, reviewed content, and applicable provider version. The server requires a recorded approval before dispatching a send or calendar change. An uncertain network outcome is retained for reconciliation. Cancellation stops later task steps; a provider request already in flight may still finish.
 
-A server-only CopilotKit Intelligence project key is needed for the sample walkthrough. CI uses synthetic keys and mocked Intelligence boundaries. No provider keys, personal data, or third-party logins are needed for CI. CopilotKit Intelligence and any configured model/provider operate under their own terms and data policies.
+The sample walkthrough needs no model key or third-party login. The chat Worker validates each session with the API and stores conversations in a per-owner Durable Object. Configure Cloudflare AI Gateway credentials only as server or Worker secrets. CI uses a local model fixture and local Wrangler Durable Objects; live model access has not been acceptance tested. Cloudflare and any configured model provider operate under their own terms and data policies.

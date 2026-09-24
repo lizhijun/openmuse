@@ -5,7 +5,7 @@ import type { TestContext } from "node:test";
 
 type ModelCall = { name: string; arguments: object };
 
-// Serve the provider protocol, leaving tool execution and AG-UI event emission to the real SDK.
+// Serve the OpenAI-compatible chat completion protocol used by Cloudflare AI Gateway.
 export async function modelFixture(
   t: TestContext,
   reply: (index: number) => ModelCall | undefined | Promise<ModelCall | undefined>,
@@ -17,43 +17,29 @@ export async function modelFixture(
     const index = requests.length;
     requests.push({ path: request.url ?? "", body });
     const call = await reply(index);
-    response.writeHead(200, { "Content-Type": "text/event-stream" });
-    const emit = (type: string, value: object) =>
-      response.write(`data: ${JSON.stringify({ type, ...value })}\n\n`);
-    const base = { id: `response-${index}`, created_at: 1000, model: "fixture" };
-    emit("response.created", { response: { ...base, status: "in_progress" } });
-    if (call) {
-      const item = {
-        id: `item-${index}`,
-        type: "function_call",
-        call_id: `call-${index}`,
-        name: call.name,
-        arguments: JSON.stringify(call.arguments),
-      };
-      emit("response.output_item.added", { output_index: 0, item: { ...item, arguments: "" } });
-      emit("response.function_call_arguments.delta", {
-        item_id: item.id,
-        output_index: 0,
-        delta: item.arguments,
-      });
-      emit("response.output_item.done", {
-        output_index: 0,
-        item: { ...item, status: "completed" },
-      });
-    }
-    emit("response.completed", {
-      response: {
-        ...base,
-        status: "completed",
-        usage: {
-          input_tokens: 10,
-          output_tokens: 5,
-          input_tokens_details: { cached_tokens: 0 },
-          output_tokens_details: { reasoning_tokens: 0 },
-        },
-      },
-    });
-    response.end("data: [DONE]\n\n");
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.end(
+      JSON.stringify({
+        id: `completion-${index}`,
+        choices: [
+          {
+            message: call
+              ? {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: `call-${index}`,
+                      type: "function",
+                      function: { name: call.name, arguments: JSON.stringify(call.arguments) },
+                    },
+                  ],
+                }
+              : { role: "assistant", content: "Done." },
+          },
+        ],
+      }),
+    );
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");

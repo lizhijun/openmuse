@@ -1,6 +1,6 @@
 # Demos
 
-Updated September 16, 2026. Both recordings feature OpenMuse's original capybara mascot and the current composer: the send arrow changes to a stop square inside the input pill while OpenMuse replies, then returns when the run ends. The mobile story explores websites; the desktop story starts with email and continues into related research.
+Recorded September 16, 2026, before the Cloudflare chat migration. Both recordings feature OpenMuse's original capybara mascot and the current composer: the send arrow changes to a stop square inside the input pill while OpenMuse replies, then returns when the run ends. The mobile story explores websites; the desktop story starts with email and continues into related research.
 
 ## Mobile
 
@@ -28,7 +28,7 @@ The model responses use [CopilotKit AI Mock](https://github.com/CopilotKit/aimoc
 - **Take control**, which opens that session's live browser console.
 - The open-source repository at [CopilotKit/OpenMuse](https://github.com/CopilotKit/OpenMuse).
 
-Captures are trimmed and paced for readability, including brief slowdowns of the browser card and faster transitions into takeover. This is a reproducible demonstration of the app and tool flow; it is not an evaluation of a live model's reasoning. Site content changes, so your highlights can differ. Personal workspace information is fictional. Live Google, provider quality, Intelligence persistence/replay, and OpenBot require separately configured acceptance runs; see [verification](VERIFICATION.md).
+Captures are trimmed and paced for readability, including brief slowdowns of the browser card and faster transitions into takeover. This is a historical demonstration of the app and tool flow; it is not an evaluation of a live model's reasoning. Site content changes, so your highlights can differ. Personal workspace information is fictional. Live Google, provider quality, Intelligence persistence/replay, and OpenBot require separately configured acceptance runs; see [verification](VERIFICATION.md).
 
 ## Desktop web
 
@@ -56,37 +56,9 @@ The primary button stays in the same place through each reply. Its accessible la
 
 To check interruption yourself, send a supported prompt, type a follow-up while the agent is replying, and tap the stop square. Confirm the draft remains, then send it once the arrow returns. The recordings show the send/stop state change; this interruption check is a separate acceptance step.
 
-## Run the agent browser demo
+## Run the current Cloudflare app
 
-From the repository root:
-
-```sh
-pnpm install --frozen-lockfile
-npx copilotkit@latest login
-npx copilotkit@latest project select
-pnpm --dir apps/worker exec playwright install chromium
-pnpm dev:demo
-```
-
-This starts AI Mock, the normal OpenMuse API on port **8788**, and a separate real browser worker on **8791**. Demo files and profiles stay in ignored `artifacts/demo/`. The runner reads only the Intelligence key from the project's private `.env` and passes it to its isolated API process; it does not pass provider or Google credentials. The Linux computer is disabled for this focused browser recording.
-
-Start the app in another terminal:
-
-```sh
-EXPO_PUBLIC_API_URL=http://127.0.0.1:8788 pnpm dev:web
-```
-
-For the iPhone development build:
-
-```sh
-EXPO_PUBLIC_API_URL=http://127.0.0.1:8788 pnpm --dir apps/mobile exec expo start --dev-client --port 8081
-```
-
-Use the [native setup](../apps/mobile/README.md) if the development build is not installed. Fully reload the app after changing its API URL. Android emulators use `http://10.0.2.2:8788` for the host API.
-
-For the mobile story, send **“Check out Hacker News for cool stuff”**, then **“Summarize copilotkit.ai”**. For the desktop story, send **“Check my emails for the school trip”**, open the email card, then send **“Research Monterey Bay Aquarium and suggest three exhibits”**. Wait for each reply and choose **Take control** to inspect the browser. The recording model scripts these four requests; use [a configured model](../README.md#configure-the-agent-and-google) for open-ended requests. Mail and browser tools are the same server implementations in both modes.
-
-`DEMO_MODEL_FIRST_BYTE_DELAY_MS` and `DEMO_MODEL_CHUNK_DELAY_MS` tune model pacing (defaults 1500 and 80 ms). `DEMO_API_PORT` changes the API port. Set `DEMO_WORKER_URL` and `DEMO_WORKER_TOKEN` to use an existing local worker instead of starting one. The built-in demo token is public and scoped to this local demo; it is not a deployment credential. Press Control-C to stop the demo processes. Restart your normal app command without the demo API override to return to your usual workspace.
+The original AI Mock runner was retired with the CopilotKit dependency. To run the current local sample app, start the API, Cloudflare Worker, and Expo client with the three commands in the [quick start](../README.md#quick-start). Sample chat can create the permission slip task without a model. To explore public websites through chat, configure a Cloudflare AI Gateway model and the browser worker as described in the README. Model behavior and live website content may differ from these historical recordings.
 
 ## Record your own demo
 
@@ -103,10 +75,10 @@ Capture at native resolution, trim idle time, and frame the portrait capture ins
 
 ### Web
 
-Start the demo runner, then export and serve the web app to avoid development reload banners:
+Start the API and Cloudflare Worker, then export and serve the web app to avoid development reload banners:
 
 ```sh
-EXPO_PUBLIC_API_URL=http://127.0.0.1:8788 pnpm --dir apps/mobile exec expo export --platform web --clear --output-dir dist/web
+pnpm --dir apps/mobile exec expo export --platform web --clear --output-dir dist/web
 python3 -m http.server 8081 --bind 127.0.0.1 --directory apps/mobile/dist/web
 ```
 

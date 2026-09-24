@@ -102,6 +102,21 @@ test("server reopens the same worker UUID regardless of stale local session stat
   assert.equal(calls.length, 4);
 });
 
+test("a repeated chat browser request keeps its original session", async (t) => {
+  const calls: string[] = [];
+  const { service } = await browserFixture(t, (path, body) => {
+    calls.push(path);
+    return { data: { ...savedSession, id: body.id, url: body.url } };
+  });
+  const first = await service.create("owner", "https://example.com/", sessionId);
+  const replay = await service.create("owner", "https://example.com/", sessionId);
+  assert.equal(replay.id, first.id);
+  assert.deepEqual(calls, ["/sessions"]);
+  await assert.rejects(service.create("owner", "https://example.org/", sessionId), {
+    status: 409,
+  });
+});
+
 test("console input persists the worker's current page title and URL", async (t) => {
   const updated = { ...savedSession, title: "New page", url: "https://example.org/" };
   const { db, service } = await browserFixture(t, () => ({ data: updated }));

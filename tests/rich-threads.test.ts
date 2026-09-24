@@ -1,200 +1,143 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { after, before, test } from "node:test";
-import { CopilotKitIntelligence } from "@copilotkit/runtime/v2";
+import { test } from "node:test";
+import { serve } from "@hono/node-server";
 import { createApp } from "../apps/server/src/app.ts";
-import { createStore, type Store } from "../apps/server/src/db.ts";
+import { createStore } from "../apps/server/src/db.ts";
 
-let db: Store, directory: string, token: string;
-let app: Awaited<ReturnType<typeof createApp>>["app"];
-const headers = () => ({ Authorization: `Bearer ${token}`, "Content-Type": "application/json" });
-before(async () => {
-  directory = await mkdtemp(join(tmpdir(), "openmuse-rich-threads-"));
-  db = await createStore();
-  ({ app } = await createApp(db, {
+async function freePort(): Promise<number> {
+  const server = createServer();
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const port = address.port;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  return port;
+}
+
+test("Cloudflare Durable Object saves authenticated threads and replies", {
+  timeout: 45000,
+}, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-cloudflare-chat-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  const apiPort = await freePort();
+  const chatPort = await freePort();
+  const { app, agent } = await createApp(db, {
     mode: "sample",
-    port: 8787,
+    port: apiPort,
     host: "127.0.0.1",
-    publicUrl: "http://localhost:8787",
+    publicUrl: `http://127.0.0.1:${apiPort}`,
     dataDir: directory,
     agentBackend: "sample",
-    googleRedirectUri: "http://localhost:8787/api/google/callback",
+    googleRedirectUri: `http://127.0.0.1:${apiPort}/api/google/callback`,
     allowedOrigins: ["http://localhost:8081"],
-    intelligenceApiKey: "test-project-key-never-sent",
-  }));
-  const session = await app.request("/api/session", {
+    taskWorkerEnabled: false,
+  });
+  const apiServer = serve({ fetch: app.fetch, port: apiPort, hostname: "127.0.0.1" });
+  const worker = spawn(
+    join(process.cwd(), "node_modules/.bin/wrangler"),
+    [
+      "dev",
+      "--config",
+      "apps/chat-worker/wrangler.toml",
+      "--port",
+      String(chatPort),
+      "--ip",
+      "127.0.0.1",
+      "--local",
+      "--persist-to",
+      join(directory, "wrangler"),
+      "--var",
+      `OPENMUSE_API_URL:http://127.0.0.1:${apiPort}`,
+      "--log-level",
+      "error",
+    ],
+    {
+      cwd: process.cwd(),
+      env: { ...process.env, WRANGLER_SEND_METRICS: "false" },
+      stdio: "ignore",
+    },
+  );
+  t.after(async () => {
+    worker.kill("SIGTERM");
+    if (worker.exitCode === null)
+      await Promise.race([
+        once(worker, "close"),
+        new Promise((resolve) => setTimeout(resolve, 3000)),
+      ]);
+    await new Promise<void>((resolve) => apiServer.close(() => resolve()));
+    await agent.stop();
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const base = `http://127.0.0.1:${chatPort}`;
+  let ready = false;
+  for (let attempt = 0; attempt < 80; attempt++) {
+    try {
+      const response = await fetch(`${base}/health`);
+      if (response.ok) {
+        ready = true;
+        break;
+      }
+    } catch {
+      /* Wrangler is starting. */
+    }
+    if (worker.exitCode !== null) break;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  assert.equal(ready, true, "Wrangler did not start");
+  assert.equal((await fetch(`${base}/threads`)).status, 401);
+  assert.equal(
+    (await fetch(`${base}/threads`, { headers: { Authorization: "Bearer invalid" } })).status,
+    401,
+  );
+  const session = await fetch(`http://127.0.0.1:${apiPort}/api/session`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: "{}",
   });
-  token = (await session.json()).token;
-});
-after(async () => {
-  await db.close();
-  await rm(directory, { recursive: true, force: true });
-});
-
-test("main chat is provisioned for the authenticated owner before the first run", async (t) => {
-  const calls: Parameters<CopilotKitIntelligence["getOrCreateThread"]>[0][] = [];
-  t.mock.method(
-    CopilotKitIntelligence.prototype,
-    "getOrCreateThread",
-    async (input: Parameters<CopilotKitIntelligence["getOrCreateThread"]>[0]) => {
-      calls.push(input);
-      return { id: input.threadId };
-    },
-  );
-  const first = await (await app.request("/api/main-thread", { headers: headers() })).json();
-  const reopened = await (await app.request("/api/main-thread", { headers: headers() })).json();
-  assert.equal(first.existing, true);
-  assert.equal(reopened.threadId, first.threadId);
+  const token = ((await session.json()) as { token: string }).token;
+  const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  const list = await fetch(`${base}/threads`, { headers });
+  assert.equal(list.status, 200);
   assert.ok(
-    calls.every(
-      (call) =>
-        call.userId === "local-user" &&
-        call.agentId === "default" &&
-        call.threadId === first.threadId,
+    ((await list.json()) as { threads: { id: string }[] }).threads.some(
+      (thread) => thread.id === "main",
     ),
   );
-  assert.equal(calls.length, 2);
-});
-
-test("a failed main-thread connection remains an error and does not create another id", async (t) => {
-  const before = await db.get("local-user", "conversation-settings", "main");
-  t.mock.method(CopilotKitIntelligence.prototype, "getOrCreateThread", async () => {
-    throw new Error("Platform unavailable");
-  });
-  assert.equal((await app.request("/api/main-thread", { headers: headers() })).status, 502);
-  assert.deepEqual(await db.get("local-user", "conversation-settings", "main"), before);
-});
-
-test("Rich Threads lists through CopilotKit, scopes by authenticated owner and preserves pagination", async (t) => {
-  const calls: Parameters<CopilotKitIntelligence["listThreads"]>[0][] = [];
-  t.mock.method(
-    CopilotKitIntelligence.prototype,
-    "listThreads",
-    async (input: Parameters<CopilotKitIntelligence["listThreads"]>[0]) => {
-      calls.push(input);
-      return {
-        threads: [{ id: "thread-1", name: "Trip planning" }],
-        joinCode: "test",
-        nextCursor: "page-2",
-      };
-    },
-  );
-  assert.equal((await app.request("/api/copilotkit/threads?agentId=default")).status, 401);
-  assert.equal(calls.length, 0);
-  const result = await app.request(
-    "/api/copilotkit/threads?agentId=default&userId=forged&includeArchived=true&limit=20&cursor=page-1",
-    { headers: headers() },
-  );
-  assert.equal(result.status, 200, await result.clone().text());
-  assert.deepEqual(calls, [
-    {
-      userId: "local-user",
-      agentId: "default",
-      includeArchived: true,
-      limit: 20,
-      cursor: "page-1",
-    },
-  ]);
-  assert.equal((await result.json()).nextCursor, "page-2");
-});
-
-test("native and web thread rename reaches the SDK without accepting a forged owner", async (t) => {
-  const calls: Parameters<CopilotKitIntelligence["updateThread"]>[0][] = [];
-  t.mock.method(
-    CopilotKitIntelligence.prototype,
-    "updateThread",
-    async (input: Parameters<CopilotKitIntelligence["updateThread"]>[0]) => {
-      calls.push(input);
-      return { id: input.threadId, name: input.updates.name ?? null };
-    },
-  );
-  const preflight = await app.request("/api/copilotkit/threads/thread-1", {
-    method: "OPTIONS",
-    headers: {
-      Origin: "http://localhost:8081",
-      "Access-Control-Request-Method": "PATCH",
-      "Access-Control-Request-Headers": "authorization,content-type",
-    },
-  });
-  assert.match(preflight.headers.get("Access-Control-Allow-Methods") || "", /PATCH/);
-  const response = await app.request("/api/copilotkit/threads/thread-1", {
+  const created = await fetch(`${base}/threads`, { method: "POST", headers });
+  assert.equal(created.status, 201);
+  const thread = (await created.json()) as { id: string };
+  const renamed = await fetch(`${base}/threads/${thread.id}`, {
     method: "PATCH",
-    headers: headers(),
-    body: JSON.stringify({ agentId: "default", userId: "forged", name: "Weekend plans" }),
+    headers,
+    body: JSON.stringify({ name: "School forms" }),
   });
-  assert.equal(response.status, 200, await response.clone().text());
-  assert.deepEqual(calls, [
-    {
-      threadId: "thread-1",
-      userId: "local-user",
-      agentId: "default",
-      updates: { name: "Weekend plans" },
-    },
-  ]);
-});
-
-test("archive is authenticated and routed to CopilotKit", async (t) => {
-  const calls: Parameters<CopilotKitIntelligence["archiveThread"]>[0][] = [];
-  t.mock.method(
-    CopilotKitIntelligence.prototype,
-    "archiveThread",
-    async (input: Parameters<CopilotKitIntelligence["archiveThread"]>[0]) => {
-      calls.push(input);
-    },
-  );
-  const response = await app.request("/api/copilotkit/threads/thread-1/archive", {
-    method: "POST",
-    headers: headers(),
-    body: JSON.stringify({ agentId: "default" }),
+  assert.equal(((await renamed.json()) as { name: string }).name, "School forms");
+  const send = () =>
+    fetch(`${base}/threads/${thread.id}/messages`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ id: "message-1", text: "Complete the permission slip" }),
+    });
+  const reply = await send();
+  assert.equal(reply.status, 200, await reply.clone().text());
+  const first = (await reply.json()) as { message: { id: string; data?: { taskId: string } } };
+  assert.ok(first.message.data?.taskId);
+  const duplicate = await send();
+  assert.equal(((await duplicate.json()) as typeof first).message.id, first.message.id);
+  const history = await fetch(`${base}/threads/${thread.id}/messages`, { headers });
+  assert.equal(((await history.json()) as { messages: unknown[] }).messages.length, 2);
+  const archived = await fetch(`${base}/threads/${thread.id}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ archived: true }),
   });
-  assert.equal(response.status, 200);
-  assert.deepEqual(calls, [{ threadId: "thread-1", userId: "local-user", agentId: "default" }]);
-});
-
-test("history retains rich tool messages and provider failures remain errors", async (t) => {
-  const messages = [
-    {
-      id: "assistant-1",
-      role: "assistant",
-      content: "Working on the form",
-      toolCalls: [
-        { id: "call-1", type: "function", function: { name: "delegate_task", arguments: "{}" } },
-      ],
-    },
-    { id: "tool-1", role: "tool", toolCallId: "call-1", content: '{"taskId":"task-1"}' },
-  ];
-  const calls: Parameters<CopilotKitIntelligence["getThreadMessages"]>[0][] = [];
-  t.mock.method(
-    CopilotKitIntelligence.prototype,
-    "getThreadMessages",
-    async (input: Parameters<CopilotKitIntelligence["getThreadMessages"]>[0]) => {
-      calls.push(input);
-      return { messages };
-    },
-  );
-  const history = await app.request("/api/copilotkit/threads/thread-1/messages?userId=forged", {
-    headers: headers(),
-  });
-  assert.equal(history.status, 200);
-  assert.deepEqual((await history.json()).messages, messages);
-  assert.deepEqual(calls, [{ threadId: "thread-1", userId: "local-user" }]);
-  t.mock.method(CopilotKitIntelligence.prototype, "listThreads", async () => {
-    throw new Error("Platform unavailable");
-  });
-  assert.equal(
-    (await app.request("/api/copilotkit/threads?agentId=default", { headers: headers() })).status,
-    500,
-  );
-});
-
-test("workspace reports Rich Threads configuration without disclosing the project key", async () => {
-  const response = await app.request("/api/workspace", { headers: headers() });
-  const body = await response.text();
-  assert.equal(JSON.parse(body).runtime.richThreads, true);
-  assert.ok(!body.includes("test-project-key-never-sent"));
+  assert.equal(((await archived.json()) as { archived: boolean }).archived, true);
 });

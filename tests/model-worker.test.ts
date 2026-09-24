@@ -9,7 +9,7 @@ import type { ActionProposal } from "../packages/domain/src/index.ts";
 import { fixture as computerFixture } from "./helpers/computer.ts";
 import { modelFixture } from "./helpers/model.ts";
 
-test("CopilotKit model worker executes server tools and persists the confirmed outcome", async (t) => {
+test("Cloudflare model worker executes server tools and persists the confirmed outcome", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "openmuse-model-"));
   const db = await createStore();
   const calls: { name: string; arguments: object }[] = [
@@ -43,7 +43,6 @@ test("CopilotKit model worker executes server tools and persists the confirmed o
       publicUrl: "http://localhost:8787",
       dataDir: directory,
       agentBackend: "model",
-      intelligenceApiKey: "test-project-key-never-sent",
       model: "openai/fixture",
       googleRedirectUri: "http://localhost:8787/api/google/callback",
       allowedOrigins: [],
@@ -65,7 +64,7 @@ test("CopilotKit model worker executes server tools and persists the confirmed o
       result.events.some((event) => event.title === "Read the authorized workspace sources"),
     );
     assert.ok(requests.length >= 4 && requests.length <= 6);
-    assert.ok(requests.every((request) => request.path === "/v1/responses"));
+    assert.ok(requests.every((request) => request.path === "/v1/chat/completions"));
     assert.ok(requests[0].body.includes('"name":"prepare_email"'));
     assert.ok(requests[0].body.includes('"name":"run_computer_command"'));
     assert.ok(

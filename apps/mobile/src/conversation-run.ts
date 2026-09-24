@@ -1,6 +1,6 @@
 type RunError = { error: unknown; context?: { agentId?: string } };
 
-/** CopilotKit emits run failures through onError even when runAgent resolves. */
+/** The chat transport can report a run error while its request promise resolves. */
 export async function runConversationTurn(
   agentId: string,
   execute: () => Promise<unknown>,

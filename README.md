@@ -1,182 +1,93 @@
-  <div align="center">
-
 # OpenMuse
 
-**A personal agent with a browser, terminal, files, and work that keeps going. Compatible with any agent harness.**
+OpenMuse is a personal agent workspace for web, iOS, and Android. Chat and conversation history run in a Cloudflare Worker with Durable Objects. The existing Hono API, task worker, browser worker, documents, and review flow handle work that continues after a chat reply.
 
-Ask for an outcome. Follow the plan, review actions, and come back to the result.
-Built with CopilotKit React Native for iOS, Android, and web.
-
-[Quick start](#quick-start) · [Demo](#demo) · [Features](#features) · [Architecture](#architecture) · [Docs](docs/README.md) · [Contributing](CONTRIBUTING.md)
-
-[![CI](https://github.com/CopilotKit/OpenMuse/actions/workflows/ci.yml/badge.svg)](https://github.com/CopilotKit/OpenMuse/actions/workflows/ci.yml)
-[![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-
-Clone this template and customize it however you want.
-
-**[Building on OpenMuse? Meet with the CopilotKit team →](https://www.copilotkit.ai/openmuse)**
-
-[![OpenMuse 🪁 — Ask it to browse. Watch the 38-second mobile demo.](assets/demos/2026-09-16/mobile.png)](assets/demos/2026-09-16/mobile.mp4)
-
-**[Watch the mobile demo · 38 seconds](assets/demos/2026-09-16/mobile.mp4)**
-
-[![OpenMuse 🪁 on the web — Watch the 42-second desktop demo.](assets/demos/2026-09-16/web.png)](assets/demos/2026-09-16/web.mp4)
-
-**[Watch the web demo · 42 seconds](assets/demos/2026-09-16/web.mp4)**
-
-</div>
-
-> **Alpha, for self-hosting and building on.** Open-ended reasoning, live Google accounts, and CopilotKit Rich Threads require their own configuration. See [what is verified](docs/VERIFICATION.md) and the [roadmap](ROADMAP.md).
-
-## Demo
-
-On iPhone, ask OpenMuse to find interesting stories on Hacker News and summarize CopilotKit. On desktop, ask it to check the school-trip email, open the message, and research exhibits at Monterey Bay Aquarium. The agent shows email and browser results inline. **Take control** opens that same browser session when you need it.
-
-The 38-second iPhone and 42-second desktop web demos show the current interface, framed in 16:9. The send arrow becomes a stop square inside the input pill while the agent replies, then switches back. Stopping keeps your draft intact. See the [recording notes](docs/DEMO.md) for the model setup and reproduction steps.
-
-[Mobile MP4](assets/demos/2026-09-16/mobile.mp4) · [Web MP4](assets/demos/2026-09-16/web.mp4) · [Recording details and reproduction](docs/DEMO.md)
-
-## What it is
-
-OpenMuse is a personal-agent application with an agent computer, visible work, and rich results. It runs its own server, task worker, and browser worker. You can inspect and change the source under the MIT license.
-
-The computer combines **persistent Chromium and an optional Linux workspace**. The agent can browse public pages, run commands in its own container, work with files, and move PDFs between the computer and the app. You can open its browser or terminal and continue the work. Graphical desktops and autonomous checkout remain future work.
-
-## Features
-
-| Surface | What runs in this alpha |
-| --- | --- |
-| **Chat** | CopilotKit headless chat with streamed AG-UI events, mailbox search and reading, send/stop in one input pill, a visible follow-up queue, retained drafts, delegated tasks, and inline email, browser, PDF, plan, and finance cards. |
-| **Agent computer** | Persistent browser profiles and takeover console; optional isolated Linux terminal, saved command receipts, editable workspace files, and PDF transfer. |
-| **Activity** | Durable task plans, progress, input requests, pause/resume/cancel/retry, approvals, and saved receipts. SQL leases recover interrupted work. |
-| **Ideas** | Suggestions with source evidence; edit, accept, or dismiss. Sent replies and completed matching work are excluded. |
-| **Goals & Tracking** | Goals and milestones; recurring public-page checks for changes, text availability, or USD price thresholds, with deduplicated alerts and failure backoff. |
-| **Documents** | Email attachment → PDF → requested form values → filled copy → reviewed reply → receipt. Native/web PDF viewing, paging, zoom, supported fields, and sharing. |
-| **Finance** | Import transaction CSV to create a spending summary with categories, transactions, and a savings-goal action. |
-| **Gmail & Calendar** | Google OAuth adapters, complete mail threads, drafts/attachments, calendar discovery, and reviewed event creation/update/deletion. Live credentials required. |
-| **Personal context** | Editable name, tone, avatar, and memories. Background-update preferences and durable in-app notifications. |
-| **Rich Threads** | CopilotKit Intelligence persistence in every mode, with a stable main conversation, side chats, renaming, archiving, restoring, and replay. A server-only project key is required. |
-
-The [feature inventory](docs/FEATURES.md) describes implemented capabilities and planned extensions. Health/bank/social connectors, device push, voice, generated executable tools, and automatic reservations/payments are on the [roadmap](ROADMAP.md).
+The local sample app uses fictional mail and calendar data. It starts without a CopilotKit account, a Cloudflare account, a model key, Google OAuth, or Docker. The [2026-09-16 recordings](docs/DEMO.md) show the original interface and agent flow; they were made before this Cloudflare migration.
 
 ## Quick start
 
-**Requirements:** Node 24 LTS, pnpm 11.19.0, and a CopilotKit Intelligence project key. The local sample app needs no model, Google account, or Docker.
+Use Node 22 or newer (Node 24 LTS recommended) and pnpm 11.19.0.
 
 ```sh
-git clone https://github.com/CopilotKit/OpenMuse.git openmuse
-cd openmuse
 pnpm install --frozen-lockfile
 cp .env.example .env
-npx copilotkit@latest login
-npx copilotkit@latest project select
-# Set CPK_INTELLIGENCE_API_KEY in .env to the generated server-only project key.
-pnpm dev
 ```
 
-In another terminal:
+Start these three processes in separate terminals:
 
 ```sh
+pnpm dev
+pnpm dev:chat-worker
 pnpm dev:web
 ```
 
-Open [localhost:8081](http://localhost:8081). The API runs at [localhost:8787/api/health](http://localhost:8787/api/health).
+Open [http://localhost:8081](http://localhost:8081). The API health check is [http://localhost:8787/api/health](http://localhost:8787/api/health), and the Cloudflare Worker health check is [http://localhost:8792/health](http://localhost:8792/health). Wrangler runs Durable Objects locally and saves chat state under `apps/chat-worker/.wrangler/state`; the API saves its data under `.openmuse/`.
 
-### Try it
+In Chat, try **“Complete the permission slip”**. This creates a durable document task using sample mail. Open Activity to provide fictional form details, inspect the generated PDF, and review the prepared reply. For other sample flows, use Goals → Track or Menu → Delegate task → Finance.
 
-1. In Chat, send **“Complete the permission slip”**. Open the task, supply fictional form values, inspect the saved PDF, and review the prepared reply. This writes only to the local mailbox.
-2. In **Goals → Track**, create a built-in availability watch, then change the built-in test page to trigger an alert.
-3. In **Menu → Delegate task → Finance**, use **Try example transactions** to create an interactive spending tracker.
-4. Start the [browser worker](#browser-worker) and configure a model, then ask **“Check out Hacker News for cool stuff”** or **“Summarize copilotkit.ai”**. Follow the browser inline and use **Take control** to open its session. For a model-free version of this flow, follow the [AI Mock demo setup](docs/DEMO.md#run-the-agent-browser-demo).
+## AI models
 
-For iOS or Android, use `pnpm --dir apps/mobile ios` or `pnpm --dir apps/mobile android`. Xcode or Android tooling is required. The PDF reader needs an Expo development build; use [native setup](apps/mobile/README.md).
+Sample chat is guided and does not call a model. For open-ended chat, put `CF_ACCOUNT_ID`, `CF_API_TOKEN`, and `CF_MODEL` in `apps/chat-worker/.dev.vars`, then restart `pnpm dev:chat-worker`. `CF_MODEL` accepts a [Cloudflare AI Gateway model ID](https://developers.cloudflare.com/ai-gateway/usage/rest-api/), for example `@cf/meta/llama-3.1-8b-instruct`. `CF_GATEWAY_ID` defaults to `default`. The Worker calls Cloudflare AI Gateway's Chat Completions REST API and can delegate tasks or use mail, browser, goals, tracking, and memories through the API. **This Cloudflare model path requires your own account and has not been exercised with live credentials in this repository.**
 
-## Configure the agent and Google
+To let the background task worker use a model as well, set `AGENT_BACKEND=model`, `MODEL`, `CLOUDFLARE_ACCOUNT_ID`, and `CLOUDFLARE_API_TOKEN` in the private `.env`. It uses the same Cloudflare AI Gateway API. Keep both sets of tokens server-side; Expo receives neither. Model calls may incur Cloudflare charges.
 
-Copy the commented settings in [.env.example](.env.example) into your private `.env`:
-
-1. Set `AGENT_BACKEND=model`, `MODEL=provider/model-id`, and the matching provider key. CopilotKit supports the configured OpenAI, Anthropic or Google provider. Fictional data can still be used with a real model. Provider keys stay on the server.
-2. Create or select a CopilotKit Intelligence project with `npx copilotkit@latest login` and `npx copilotkit@latest project select`. Keep the generated `CPK_INTELLIGENCE_API_KEY` on the server.
-3. For personal mail/calendar, set `WORKSPACE_MODE=live`, the generated `CPK_INTELLIGENCE_API_KEY`, a random `OPENMUSE_ACCESS_KEY` of at least 24 characters, and `TOKEN_ENCRYPTION_KEY` containing 32 random bytes encoded as base64. Restart the API.
-4. Configure a Google OAuth web client with Gmail and Calendar APIs enabled. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`; register `${PUBLIC_API_URL}/api/google/callback` as its redirect URI. Configure consent/test-user access in your Google project.
-5. Open **Apps → Gmail** (or **Google Calendar**), connect read access, and grant write access when needed. Every send or calendar change still requires its own stored review. Changing/disconnecting the account invalidates pending connection-bound work.
-
-Google credentials are encrypted at rest. File URLs and browser consoles use short-lived signatures. This deployment uses one owner protected by a shared access key; it is not a multi-tenant authentication system. Use HTTPS and restricted network access for a remote host. Keep the default local-data mode on loopback.
-
-## Browser worker
-
-Set `BROWSER_WORKER_URL=http://127.0.0.1:8790` and a random `WORKER_TOKEN` of at least 32 characters in `.env`.
+For browser actions, set `BROWSER_WORKER_URL=http://127.0.0.1:8790` and a shared random `WORKER_TOKEN` (at least 32 characters) in `.env`, then run:
 
 ```sh
 pnpm --dir apps/worker exec playwright install chromium
 pnpm dev:browser
 ```
 
-Or use `docker compose --env-file .env -f infra/compose.yaml up --build -d`. The same token must reach the API and worker. Sessions have persistent Chromium profiles; the app can open a live screenshot console and import PDF downloads. Agent tools can read public pages and hand interactive work to the person. [Worker setup and boundaries](apps/worker/README.md).
+[Browser worker details](apps/worker/README.md).
 
-## Persistence and operation
+## Cloudflare deployment
 
-### Linux terminal and workspace
+`apps/chat-worker/wrangler.toml` declares the Worker and its SQLite-backed Durable Object. Run `pnpm exec wrangler deploy --config apps/chat-worker/wrangler.toml` after changing `OPENMUSE_API_URL` to the HTTPS URL of a reachable OpenMuse API and setting `ALLOWED_ORIGINS` to the Expo/web origin. Set model credentials as Worker secrets with Wrangler. The remote API must use `WORKSPACE_MODE=live`, a strong `OPENMUSE_ACCESS_KEY`, and `TOKEN_ENCRYPTION_KEY`; a local sample API on `127.0.0.1` cannot be reached by a deployed Worker. Set `EXPO_PUBLIC_CHAT_URL` to the deployed Worker URL before building the client.
 
-Build the computer image, enable it on the API, then open **Computer → Terminal → Start computer**:
+The Worker validates each bearer token with `/api/chat/identity`. Durable Object IDs are derived from the authenticated owner, so thread IDs and messages remain within that owner. The main thread is created automatically; side chats support creation, rename, archive, restore, and message replay. The API retains task and file records separately. The Worker and API must both remain available for chat.
 
-```sh
-docker build -t openmuse-computer:local apps/computer
-COMPUTER_ENABLED=true pnpm dev
-```
+## Features
 
-The API needs access to the Docker CLI and engine. Commands run in a nonroot container with no host-directory mounts or credentials. A named `/workspace` volume retains files when stopped. Terminal networking is disabled; public web access uses the browser worker. Commands have a 30-second limit and saved output/exit receipts. **Files** supports folders, text editing, and PDF transfer to/from Documents. This is a Linux container, not a full operating-system VM. [Setup, Colima option, and boundaries](docs/COMPUTER.md).
+| Surface | Current behavior |
+| --- | --- |
+| Chat | Durable threads, local sample replies or Cloudflare model replies, follow-up queue, send/stop, and linked task cards. |
+| Activity | Persisted task plans, progress, input requests, pause/resume/cancel/retry, approvals, and saved receipts. |
+| Documents | Email attachment to PDF to filled copy to reviewed reply. PDF viewing and sharing on native/web. |
+| Finance | Import transaction CSV and create spending summaries and savings goals. |
+| Goals and tracking | Goals, milestones, recurring webpage checks, and deduplicated alerts. |
+| Mail and calendar | Sample data locally; Google OAuth adapters and reviewed writes when configured. |
+| Browser and computer | Optional Chromium worker with takeover; optional isolated Linux container and persistent workspace. |
 
-### Application storage
-
-By default, embedded PGlite, documents and the signing key live in `.openmuse/`; browser profiles live in `.openmuse/browser-profiles/`. Keep that directory private and back it up. The API hosts the task worker. The host must remain running for background work.
-
-For a separate task worker, configure the same `DATABASE_URL`, secrets and shared `DATA_DIR` for both processes, then set `TASK_WORKER_ENABLED=false` on the API and run `pnpm dev:worker`. PGlite cannot be opened by separate processes. Production commands are `pnpm build:server`, `pnpm start` and `pnpm start:worker`. Run one API instance; task workers coordinate through SQL leases.
-
-No hidden retry occurs after an uncertain external write. Review its provider outcome before creating a replacement. Pausing/cancelling prevents subsequent task steps; an already approved in-flight provider request may finish.
-
-## CopilotKit Rich Threads
-
-Every deployment requires `CPK_INTELLIGENCE_API_KEY` on the API server for CopilotKit Intelligence conversation persistence and replay. Create or select a project with `npx copilotkit@latest login` and `npx copilotkit@latest project select`, set the generated server-only key, and restart the API. The native menu uses `useThreads`; rich tool results link back to saved tasks, documents, and browser sessions.
-
-Intelligence is a separate service and is not included in this repository's MIT license. No project key is shipped. [Configuration and validation boundaries](docs/RICH-THREADS.md).
+The [feature inventory](docs/FEATURES.md) has more detail. Health, bank and social connectors, voice, and autonomous purchases remain on the [roadmap](ROADMAP.md).
 
 ## Architecture
 
 ```mermaid
-flowchart TD
-  Client[Expo / React Native / Web] -->|AG-UI and authenticated API| API[Hono + CopilotKit runtime]
-  API --> Tasks[Durable task worker]
-  API --> Threads[CopilotKit Intelligence required in every mode]
-  API --> Store[(PGlite or PostgreSQL)]
+flowchart LR
+  Client[Expo web / iOS / Android] --> Chat[Cloudflare Worker]
+  Client --> API[Hono API]
+  Chat --> DO[(Durable Objects: threads + messages)]
+  Chat -->|authenticated tools| API
+  Chat --> Gateway[AI Gateway, optional]
+  API --> Store[(PGlite / PostgreSQL)]
+  API --> Tasks[Task worker]
   Tasks --> Store
-  Tasks --> Review[Stored action review]
-  Review --> Google[Gmail / Calendar adapters]
-  Tasks --> Browser[Chromium worker + persistent profiles]
-  API --> Browser
-  API --> Computer[Optional Docker Linux computer]
-  Tasks --> Computer
-  Computer --> Volume[(Persistent workspace volume)]
-  Tasks --> Files[PDF files + structured artifacts]
-  API -. future adapter .-> OpenBot[OpenBot]
+  Tasks --> Browser[Chromium worker, optional]
+  Tasks --> Computer[Docker computer, optional]
+  Tasks --> Review[Stored review before external writes]
 ```
 
-| Directory | Purpose |
-| --- | --- |
-| `apps/mobile` | Shared iOS, Android, and web UI with CopilotKit headless hooks. |
-| `apps/server` | API, CopilotKit runtime, identity boundary, task engine, reviews, files, and persistence. |
-| `apps/worker` | Token-protected Playwright browser service with persistent profiles. |
-| `apps/computer` | Nonroot Linux image, bounded filesystem helper, and real container verification. |
-| `packages/domain` | Shared types and request validation. |
-| `packages/integrations` | Google and browser protocol adapters. |
-| `packages/backends` | Optional OpenBot HTTP adapter and its identity boundary. |
-| `tests` | Workflow, runtime, persistence, provider-contract, and authorization tests. |
+`apps/mobile` holds the shared React Native UI, `apps/chat-worker` holds Cloudflare chat and history, `apps/server` holds the API and task engine, `apps/worker` holds the browser, and `packages` holds shared domain types and integrations.
 
-### OpenBot compatibility
+## Other configuration
 
-OpenMuse's native client and personal-agent workflows are independent of OpenBot. The disabled OpenBot adapter is pinned and contract-tested against upstream interfaces. Live user/session bridging, routine mapping, and computer backend wiring remain future work. OpenBot's Intelligence runtime is not a raw AG-UI endpoint. [Integration contract](docs/OPENBOT-INTEGRATION.md).
+For a personal Google account, use `WORKSPACE_MODE=live`, `AGENT_BACKEND=model`, an access key of at least 24 characters, a 32-byte base64 encryption key, and Google OAuth client credentials. Register `${PUBLIC_API_URL}/api/google/callback` as the redirect URI. Every send or calendar change still requires a stored review. The live API uses one owner protected by a shared access key; it is not a multi-tenant identity system. Use HTTPS and restricted network access. [Environment template](.env.example).
 
-## Development
+The API's embedded PGlite database and documents live in `.openmuse/`. For a separate task worker, use shared PostgreSQL, secrets, and `DATA_DIR`, set `TASK_WORKER_ENABLED=false` on the API, then run `pnpm dev:worker`. A PGlite database cannot be opened by multiple processes. [Computer setup](docs/COMPUTER.md).
+
+For native development, see [apps/mobile/README.md](apps/mobile/README.md). Xcode or Android tooling and an Expo development build are required for the PDF reader.
+
+## Verify
 
 ```sh
 pnpm lint
@@ -184,17 +95,8 @@ pnpm typecheck
 pnpm test
 pnpm build:server
 pnpm build:web
-pnpm build:ios
-pnpm build:android
-pnpm --dir apps/worker typecheck
-pnpm test:browser
-pnpm test:computer
 ```
 
-Platform build scripts export JavaScript/Hermes bundles; they do not produce signed app binaries. Browser checks require installed Chromium and public fixture access. CI also exercises the browser and Linux computer containers. See [contribution guidance](CONTRIBUTING.md) and [verification results](docs/VERIFICATION.md).
+Browser checks need installed Chromium; computer checks need Docker. See [contribution guidance](CONTRIBUTING.md) and [verification notes](docs/VERIFICATION.md).
 
-## Contributing and license
-
-Issues and pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), [ROADMAP.md](ROADMAP.md), and the [security policy](SECURITY.md).
-
-MIT licensed. Built by CopilotKit. Its original interface and fictional assets are included. Website, email, and document content supplies evidence, not permission to act.
+MIT licensed. The original OpenMuse interface and fictional assets remain included. Website, email, and document content supplies evidence, not permission to act.

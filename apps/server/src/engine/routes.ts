@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { z } from "zod";
 import type {
@@ -11,6 +11,9 @@ import type { AgentService } from "./service.ts";
 
 const text = z.string().trim().min(1).max(4000);
 const memorySchema = z.object({ text, source: z.string().trim().min(1).max(200).optional() });
+const requestIdSchema = z.object({ requestId: z.string().min(1).max(1000).optional() });
+const idFor = (kind: string, requestId: string) =>
+  createHash("sha256").update(`${kind}:${requestId}`).digest("hex");
 const goalPatchSchema = z.object({
   status: z.enum(["active", "paused", "completed"]).optional(),
   milestones: z
@@ -28,9 +31,11 @@ const goalPatchSchema = z.object({
 export function agentRoutes(service: AgentService): Hono<{ Variables: { owner: string } }> {
   const app = new Hono<{ Variables: { owner: string } }>();
   app.get("/", async (c) => c.json(await service.snapshot(c.get("owner"))));
-  app.post("/tasks", async (c) =>
-    c.json(await service.createTask(c.get("owner"), await c.req.json()), 201),
-  );
+  app.post("/tasks", async (c) => {
+    const body = await c.req.json();
+    const requestId = requestIdSchema.parse(body).requestId;
+    return c.json(await service.createTask(c.get("owner"), body, requestId), 201);
+  });
   app.get("/tasks/:id", async (c) =>
     c.json(await service.detail(c.get("owner"), c.req.param("id"))),
   );
@@ -53,16 +58,27 @@ export function agentRoutes(service: AgentService): Hono<{ Variables: { owner: s
       await service.answer(c.get("owner"), c.req.param("id"), body.answer, body.fields),
     );
   });
-  app.post("/goals", async (c) =>
-    c.json(await service.createGoal(c.get("owner"), await c.req.json()), 201),
-  );
+  app.post("/goals", async (c) => {
+    const body = await c.req.json();
+    const requestId = requestIdSchema.parse(body).requestId;
+    return c.json(
+      await service.createGoal(
+        c.get("owner"),
+        body,
+        requestId ? idFor("goal", requestId) : undefined,
+      ),
+      201,
+    );
+  });
   app.post("/goals/:id", async (c) => {
     const body = goalPatchSchema.parse(await c.req.json());
     return c.json(await service.updateGoal(c.get("owner"), c.req.param("id"), body));
   });
-  app.post("/monitors", async (c) =>
-    c.json(await service.createMonitor(c.get("owner"), await c.req.json()), 201),
-  );
+  app.post("/monitors", async (c) => {
+    const body = await c.req.json();
+    const requestId = requestIdSchema.parse(body).requestId;
+    return c.json(await service.createMonitor(c.get("owner"), body, requestId), 201);
+  });
   app.post("/monitors/:id/control", async (c) => {
     const { action } = z
       .object({ action: z.enum(["pause", "resume", "stop", "check"]) })
@@ -82,14 +98,17 @@ export function agentRoutes(service: AgentService): Hono<{ Variables: { owner: s
     );
   });
   app.post("/memories", async (c) => {
-    const body = memorySchema.parse(await c.req.json());
+    const raw = await c.req.json();
+    const body = memorySchema.parse(raw);
+    const requestId = requestIdSchema.parse(raw).requestId;
     const memory: AgentMemory = {
-      id: randomUUID(),
+      id: requestId ? idFor("memory", requestId) : randomUUID(),
       text: body.text,
       source: body.source ?? "You",
       createdAt: new Date().toISOString(),
     };
-    return c.json(await service.db.put(c.get("owner"), "memories", memory), 201);
+    await service.db.insertIfAbsent(c.get("owner"), "memories", memory);
+    return c.json(await service.db.get(c.get("owner"), "memories", memory.id), 201);
   });
   app.post("/memories/:id", async (c) => {
     const body = memorySchema.parse(await c.req.json());

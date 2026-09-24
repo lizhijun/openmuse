@@ -1,21 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { AbstractAgent } from "@ag-ui/client";
-import { CopilotKitCore } from "@copilotkit/core";
-import { throwError } from "rxjs";
 import { ConversationQueue } from "../apps/mobile/src/conversation-queue.ts";
 import { runConversationTurn } from "../apps/mobile/src/conversation-run.ts";
 
-test("an emitted CopilotKit run error stops the queue even when runAgent resolves", async () => {
+test("a chat transport error pauses the queue even when its request resolves", async () => {
   let attempts = 0;
-  class FailingAgent extends AbstractAgent {
-    run() {
-      attempts++;
-      return throwError(() => new Error("Connection interrupted"));
-    }
-  }
-  const agent = new FailingAgent({ agentId: "default" });
-  const core = new CopilotKitCore({ agents__unsafe_dev_only: { default: agent } });
   const queue = new ConversationQueue();
   queue.enqueue({ id: "first", text: "First task" });
   queue.enqueue({ id: "second", text: "Second task" });
@@ -23,8 +12,21 @@ test("an emitted CopilotKit run error stops the queue even when runAgent resolve
     queue.flush(() =>
       runConversationTurn(
         "default",
-        () => core.runAgent({ agent }),
-        (onError) => core.subscribe({ onError }),
+        async () => {
+          attempts++;
+          listener?.({
+            error: new Error("Connection interrupted"),
+            context: { agentId: "default" },
+          });
+        },
+        (onError) => {
+          listener = onError;
+          return {
+            unsubscribe: () => {
+              listener = undefined;
+            },
+          };
+        },
       ),
     ),
     /Connection interrupted/,
@@ -36,3 +38,5 @@ test("an emitted CopilotKit run error stops the queue even when runAgent resolve
     ["second"],
   );
 });
+
+let listener: ((event: { error: unknown; context?: { agentId?: string } }) => void) | undefined;

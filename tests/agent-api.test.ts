@@ -3,7 +3,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { CopilotKitIntelligence } from "@copilotkit/runtime/v2";
 import { createApp } from "../apps/server/src/app.ts";
 import type { Config } from "../apps/server/src/config.ts";
 import { createStore, type Store } from "../apps/server/src/db.ts";
@@ -42,7 +41,6 @@ before(async () => {
     publicUrl: "http://localhost:8787",
     dataDir: directory,
     agentBackend: "model",
-    intelligenceApiKey: "test-project-key-never-sent",
     googleRedirectUri: "http://localhost:8787/api/google/callback",
     allowedOrigins: ["http://localhost:8081"],
   };
@@ -79,27 +77,40 @@ test("agent API requires a session and reports the actual worker state", async (
   assert.equal(workspace.identity.tone, "warm");
 });
 
-test("the main Rich Thread survives reopening and concurrent initialization", async (t) => {
-  t.mock.method(
-    CopilotKitIntelligence.prototype,
-    "getOrCreateThread",
-    async (input: Parameters<CopilotKitIntelligence["getOrCreateThread"]>[0]) => ({
-      id: input.threadId,
-    }),
-  );
-  assert.equal((await server.app.request("/api/main-thread")).status, 401);
+test("chat identity stays stable across requests and requires authentication", async () => {
+  assert.equal((await server.app.request("/api/chat/identity")).status, 401);
   const responses = await Promise.all(
-    Array.from({ length: 3 }, () => server.app.request("/api/main-thread", { headers: headers() })),
+    Array.from({ length: 3 }, () =>
+      server.app.request("/api/chat/identity", { headers: headers() }),
+    ),
   );
-  const threads = await Promise.all(responses.map((response) => response.json()));
-  assert.ok(threads.every((thread) => thread.threadId === threads[0].threadId));
-  assert.equal(threads[0].existing, true);
+  const identities = await Promise.all(responses.map((response) => response.json()));
+  assert.ok(identities.every((identity) => identity.owner === identities[0].owner));
+  assert.equal(identities[0].mode, "sample");
   const reopened = await (
-    await server.app.request("/api/main-thread", { headers: headers() })
+    await server.app.request("/api/chat/identity", { headers: headers() })
   ).json();
-  assert.equal(reopened.threadId, threads[0].threadId);
-  assert.equal(reopened.existing, true);
-  assert.equal(await db.get("other-user", "conversation-settings", "main"), null);
+  assert.deepEqual(reopened, identities[0]);
+});
+
+test("chat tool request IDs prevent duplicate goals, watches, memories, and tasks", async () => {
+  const goal = { title: "Plan a trip", requestId: "goal-request-1" };
+  const firstGoal = await read<Goal>("/goals", goal, 201);
+  assert.equal((await read<Goal>("/goals", goal, 201)).id, firstGoal.id);
+  const watch = {
+    title: "Watch seats",
+    url: "sample://availability",
+    condition: "change",
+    requestId: "watch-request-1",
+  };
+  const firstWatch = await read<Monitor>("/monitors", watch, 201);
+  assert.equal((await read<Monitor>("/monitors", watch, 201)).id, firstWatch.id);
+  const memory = { text: "I prefer mornings", requestId: "memory-request-1" };
+  const firstMemory = await read<AgentMemory>("/memories", memory, 201);
+  assert.equal((await read<AgentMemory>("/memories", memory, 201)).id, firstMemory.id);
+  const task = { prompt: "Make a plan", requestId: "task-request-1" };
+  const firstTask = await read<AgentTask>("/tasks", task, 201);
+  assert.equal((await read<AgentTask>("/tasks", task, 201)).id, firstTask.id);
 });
 
 test("task detail and controls stay scoped to the authenticated owner", async () => {

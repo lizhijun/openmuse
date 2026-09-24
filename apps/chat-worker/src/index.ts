@@ -400,6 +400,10 @@ export class ChatThreads extends DurableObject<Env> {
           signal,
         },
       );
+      if (response.status === 401)
+        throw new Error(
+          "Cloudflare AI Gateway 认证失败（401）。请更新 API Token，并确认它具有 Workers AI 读取权限。",
+        );
       if (!response.ok) throw new Error(`Cloudflare AI Gateway returned ${response.status}`);
       const result = (await response.json()) as {
         choices?: {

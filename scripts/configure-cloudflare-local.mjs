@@ -1,10 +1,12 @@
 import { execFileSync } from "node:child_process";
 import { chmodSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
+const wrangler = resolve(root, "node_modules/.bin/wrangler");
 const runWrangler = (...args) =>
-  JSON.parse(execFileSync("pnpm", ["exec", "wrangler", ...args], { cwd: root, encoding: "utf8" }));
+  JSON.parse(execFileSync(wrangler, args, { cwd: tmpdir(), encoding: "utf8" }));
 
 const identity = runWrangler("whoami", "--json");
 if (!identity.loggedIn || identity.accounts?.length !== 1)

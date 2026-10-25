@@ -43,6 +43,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.0",
+    "@cloudflare/containers": "0.3.7",
     "@cloudflare/workers-types": "^5.20260922.1",
     "@types/node": "^24.0.0",
     "@types/pg": "^8.15.5",

@@ -74,6 +74,42 @@ export class Store {
     );
     return result.rows.map((row) => row.data as { owner: string; value: T });
   }
+  /** Task worker tick: only rows that may be runnable, capped — avoids full-kind egress every poll. */
+  async scanDueTasks<T>(nowIso: string, limit = 32): Promise<{ owner: string; value: T }[]> {
+    const result = await this.db.query(
+      `SELECT jsonb_build_object('owner',owner,'value',data) AS data FROM records
+       WHERE kind='tasks' AND (
+         data->>'status'='queued'
+         OR (data->>'status'='scheduled' AND (data->>'nextRunAt')::timestamptz <= $1::timestamptz)
+         OR (data->>'status'='running' AND (data->>'leaseUntil')::timestamptz <= $1::timestamptz)
+         OR data->>'status'='waiting_approval'
+       )
+       ORDER BY updated_at ASC
+       LIMIT $2`,
+      [nowIso, limit],
+    );
+    return result.rows.map((row) => row.data as { owner: string; value: T });
+  }
+  /** Maintenance: skip terminal tasks that dominate the table. */
+  async scanOpenTasks<T>(): Promise<{ owner: string; value: T }[]> {
+    const result = await this.db.query(
+      `SELECT jsonb_build_object('owner',owner,'value',data) AS data FROM records
+       WHERE kind='tasks' AND NOT (data->>'status' IN ('succeeded','failed','cancelled'))
+       ORDER BY updated_at ASC`,
+    );
+    return result.rows.map((row) => row.data as { owner: string; value: T });
+  }
+  /** Maintenance: identities due for idea refresh only. */
+  async scanIdentitiesDueForIdeas<T>(staleBeforeIso: string): Promise<{ owner: string; value: T }[]> {
+    const result = await this.db.query(
+      `SELECT jsonb_build_object('owner',owner,'value',data) AS data FROM records
+       WHERE kind='agent-settings' AND id='identity'
+       AND (data->>'lastIdeasAt' IS NULL OR (data->>'lastIdeasAt')::timestamptz < $1::timestamptz)
+       ORDER BY updated_at ASC`,
+      [staleBeforeIso],
+    );
+    return result.rows.map((row) => row.data as { owner: string; value: T });
+  }
   async claim<T>(owner: string, id: string, status: string, now: string): Promise<T | null> {
     const result = await this.db.query(
       `UPDATE records AS action SET data=jsonb_set(data,'{status}',$4::jsonb),updated_at=now()

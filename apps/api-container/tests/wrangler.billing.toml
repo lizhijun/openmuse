@@ -1,0 +1,4 @@
+name = "openmuse-inference-billing-local-test"
+main = "billing-worker.ts"
+compatibility_date = "2026-09-21"
+compatibility_flags = ["nodejs_compat"]

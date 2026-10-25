@@ -1,4 +1,4 @@
-import { Container } from "@cloudflare/containers";
+import { Container, getContainer } from "@cloudflare/containers";
 import { completeWithBinding } from "../../chat-worker/src/model";
 import { billingVariables } from "./billing";
 import { type IntegrationEnvironment, integrationVariables } from "./integrations";
@@ -59,39 +59,52 @@ function configured(env: Env): boolean {
 export class OpenMuseApiContainer extends Container<Env> {
   defaultPort = 8787;
   sleepAfter = "10m";
-  envVars = {
-    ...integrationVariables(this.env),
-    ...billingVariables(this.env),
-    NODE_ENV: "production",
-    WORKSPACE_MODE: "live",
-    AGENT_BACKEND: "model",
-    TASK_WORKER_ENABLED: "true",
-    HOST: "0.0.0.0",
-    PORT: "8787",
-    PUBLIC_API_URL: this.env.PUBLIC_API_URL,
-    OPENMUSE_CHAT_PUBLIC_URL: this.env.OPENMUSE_CHAT_PUBLIC_URL,
-    XIACHAT_IDENTITY_URL: this.env.XIACHAT_IDENTITY_URL,
-    ALLOWED_ORIGINS: this.env.ALLOWED_ORIGINS,
-    DATABASE_URL: this.env.DATABASE_URL,
-    OPENMUSE_ACCESS_KEY: this.env.OPENMUSE_ACCESS_KEY,
-    TOKEN_ENCRYPTION_KEY: this.env.TOKEN_ENCRYPTION_KEY,
-    SESSION_SIGNING_KEY: this.env.SESSION_SIGNING_KEY,
-    MODEL: this.env.MODEL,
-    COST_REVIEW_ENABLED: this.env.COST_REVIEW_ENABLED === "true" ? "true" : "false",
-    RUNTIME_ADMIN_KEY: this.env.RUNTIME_ADMIN_KEY ?? "",
-    RUNTIME_MIGRATION_ENABLED: this.env.RUNTIME_MIGRATION_ENABLED === "true" ? "true" : "false",
-    NOTIFICATION_ROLE: this.env.NOTIFICATION_ROLE ?? "disabled",
-    NOTIFICATION_HUB_URL: this.env.NOTIFICATION_HUB_URL ?? "",
-    NOTIFICATION_HUB_SIGNING_KEY: this.env.NOTIFICATION_HUB_SIGNING_KEY ?? "",
-    NOTIFICATION_RELAY_URL: this.env.NOTIFICATION_RELAY_URL ?? "",
-    NOTIFICATION_RELAY_KEY: this.env.NOTIFICATION_RELAY_KEY ?? "",
-    RUNTIME_DEPLOYMENT_ID: this.env.RUNTIME_DEPLOYMENT_ID ?? "",
-    RUNTIME_OWNER_ID: this.env.RUNTIME_OWNER_ID ?? "",
-    WORKSPACE_TRANSFER_ROLE: this.env.WORKSPACE_TRANSFER_ROLE ?? "disabled",
-    WORKSPACE_TRANSFER_ISSUER_URL: this.env.WORKSPACE_TRANSFER_ISSUER_URL ?? "",
-    WORKSPACE_TRANSFER_PUBLIC_KEY: this.env.WORKSPACE_TRANSFER_PUBLIC_KEY ?? "",
-    WORKSPACE_TRANSFER_SIGNING_KEY: this.env.WORKSPACE_TRANSFER_SIGNING_KEY ?? "",
-  };
+
+  /** Resolve at start time so `this.env` (DO bindings/secrets) is available. */
+  get envVars() {
+    return {
+      ...integrationVariables(this.env),
+      ...billingVariables(this.env),
+      NODE_ENV: "production",
+      WORKSPACE_MODE: "live",
+      AGENT_BACKEND: "model",
+      TASK_WORKER_ENABLED: "true",
+      HOST: "0.0.0.0",
+      PORT: "8787",
+      PUBLIC_API_URL: this.env.PUBLIC_API_URL,
+      OPENMUSE_CHAT_PUBLIC_URL: this.env.OPENMUSE_CHAT_PUBLIC_URL,
+      XIACHAT_IDENTITY_URL: this.env.XIACHAT_IDENTITY_URL,
+      ALLOWED_ORIGINS: this.env.ALLOWED_ORIGINS,
+      DATABASE_URL: this.env.DATABASE_URL,
+      OPENMUSE_ACCESS_KEY: this.env.OPENMUSE_ACCESS_KEY,
+      TOKEN_ENCRYPTION_KEY: this.env.TOKEN_ENCRYPTION_KEY,
+      SESSION_SIGNING_KEY: this.env.SESSION_SIGNING_KEY,
+      MODEL: this.env.MODEL,
+      COST_REVIEW_ENABLED: this.env.COST_REVIEW_ENABLED === "true" ? "true" : "false",
+      RUNTIME_ADMIN_KEY: this.env.RUNTIME_ADMIN_KEY ?? "",
+      RUNTIME_MIGRATION_ENABLED: this.env.RUNTIME_MIGRATION_ENABLED === "true" ? "true" : "false",
+      NOTIFICATION_ROLE: this.env.NOTIFICATION_ROLE ?? "disabled",
+      NOTIFICATION_HUB_URL: this.env.NOTIFICATION_HUB_URL ?? "",
+      NOTIFICATION_HUB_SIGNING_KEY: this.env.NOTIFICATION_HUB_SIGNING_KEY ?? "",
+      NOTIFICATION_RELAY_URL: this.env.NOTIFICATION_RELAY_URL ?? "",
+      NOTIFICATION_RELAY_KEY: this.env.NOTIFICATION_RELAY_KEY ?? "",
+      RUNTIME_DEPLOYMENT_ID: this.env.RUNTIME_DEPLOYMENT_ID ?? "",
+      RUNTIME_OWNER_ID: this.env.RUNTIME_OWNER_ID ?? "",
+      WORKSPACE_TRANSFER_ROLE: this.env.WORKSPACE_TRANSFER_ROLE ?? "disabled",
+      WORKSPACE_TRANSFER_ISSUER_URL: this.env.WORKSPACE_TRANSFER_ISSUER_URL ?? "",
+      WORKSPACE_TRANSFER_PUBLIC_KEY: this.env.WORKSPACE_TRANSFER_PUBLIC_KEY ?? "",
+      WORKSPACE_TRANSFER_SIGNING_KEY: this.env.WORKSPACE_TRANSFER_SIGNING_KEY ?? "",
+    };
+  }
+
+  /** Force start before proxy — avoids stale DO "healthy" + inactive instance races. */
+  override async fetch(request: Request): Promise<Response> {
+    await this.startAndWaitForPorts(this.defaultPort, {
+      instanceGetTimeoutMS: 90_000,
+      portReadyTimeoutMS: 120_000,
+    });
+    return super.fetch(request);
+  }
 }
 
 export default {
@@ -155,11 +168,11 @@ export default {
         );
       }
     }
-    return env.API_CONTAINER.getByName("shared").fetch(request);
+    return getContainer(env.API_CONTAINER, "shared").fetch(request);
   },
   async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
     if (!configured(env)) return;
-    await env.API_CONTAINER.getByName("shared").fetch(
+    await getContainer(env.API_CONTAINER, "shared").fetch(
       new Request(new URL("/api/health", env.PUBLIC_API_URL)),
     );
   },

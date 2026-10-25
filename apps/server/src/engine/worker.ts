@@ -48,7 +48,7 @@ export class TaskWorker {
     this.timer = setInterval(() => {
       // Timer callbacks cannot await runs; each run owns its durable error state.
       void this.tick().catch((error) => backgroundFailure("task worker tick", error));
-    }, this.options.pollMs ?? 1000);
+    }, this.options.pollMs ?? 10000);
     void this.tick().catch((error) => backgroundFailure("initial task worker tick", error));
   }
   async stop() {
@@ -72,7 +72,7 @@ export class TaskWorker {
     this.ticking = true;
     this.lastTickAt = new Date(this.now()).toISOString();
     try {
-      const records = await this.db.scan<AgentTask>("tasks");
+      const records = await this.db.scanDueTasks<AgentTask>(new Date(this.now()).toISOString());
       const due = records.filter(
         ({ value: t }) =>
           !this.active.has(t.id) &&

@@ -75,7 +75,7 @@ export class AgentService {
     this.refreshing = true;
     try {
       // Recover publications if the process exited after committing an outcome.
-      for (const { owner, value } of await this.db.scan<AgentTask>("tasks"))
+      for (const { owner, value } of await this.db.scanOpenTasks<AgentTask>())
         await this.publishOutcome(owner, value);
       for (const { owner, value } of await this.db.scan<Monitor>("monitors"))
         await this.activateMonitor(owner, value);
@@ -95,20 +95,20 @@ export class AgentService {
               `idea-recovery:${value.id}`,
             );
           });
-      for (const { owner, value } of await this.db.scan<{ id: string; lastIdeasAt?: string }>(
-        "agent-settings",
-      )) {
-        if (value.id !== "identity") continue;
-        if (!value.lastIdeasAt || Date.now() - Date.parse(value.lastIdeasAt) > 15 * 60000)
-          await this.refreshIdeas(owner).catch(async () => {
-            await this.notify(
-              owner,
-              "Source refresh needs attention",
-              "Reconnect the source or refresh Ideas to see the error.",
-              undefined,
-              `source-error:${Math.floor(Date.now() / 3600000)}`,
-            );
-          });
+      const staleBefore = new Date(Date.now() - 15 * 60000).toISOString();
+      for (const { owner } of await this.db.scanIdentitiesDueForIdeas<{
+        id: string;
+        lastIdeasAt?: string;
+      }>(staleBefore)) {
+        await this.refreshIdeas(owner).catch(async () => {
+          await this.notify(
+            owner,
+            "Source refresh needs attention",
+            "Reconnect the source or refresh Ideas to see the error.",
+            undefined,
+            `source-error:${Math.floor(Date.now() / 3600000)}`,
+          );
+        });
       }
     } finally {
       this.refreshing = false;

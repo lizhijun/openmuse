@@ -1,0 +1,15 @@
+FROM --platform=$BUILDPLATFORM node:24-bookworm-slim AS build
+WORKDIR /app
+RUN corepack enable
+COPY . .
+RUN pnpm install --filter openmuse --frozen-lockfile && pnpm build:server
+
+FROM node:24-bookworm-slim
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+USER node
+EXPOSE 8787
+CMD ["node", "dist/apps/server/src/index.js"]
